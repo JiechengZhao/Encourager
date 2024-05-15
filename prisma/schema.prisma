@@ -13,11 +13,36 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+model Conversation {
+  id           Int           @id @default(autoincrement())
+  title        String
+  description  String?
+  chatMessages ChatMessage[]
+  dialogs      LLMDialog[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model ChatMessage {
+  id             Int          @id @default(autoincrement())
+  seq            Int
+  sender         String
+  content        String
+  dialogId       Int?
+  dialog         LLMDialog?   @relation(fields: [dialogId], references: [id])
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  createdAt      DateTime     @default(now())
+}
+
 model LLMDialog {
-  id        Int      @id @default(autoincrement())
-  question  String
-  answer    String?   
-  promptId  String?  
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             Int           @id @default(autoincrement())
+  sender         String
+  question       String
+  bot            String
+  answer         String
+  conversationId Int
+  conversation   Conversation  @relation(fields: [conversationId], references: [id])
+  createdAt      DateTime      @default(now())
+  ChatMessage    ChatMessage[]
 }
