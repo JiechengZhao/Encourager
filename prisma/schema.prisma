@@ -25,24 +25,28 @@ model Conversation {
 
 model ChatMessage {
   id             Int          @id @default(autoincrement())
-  seq            Int
   sender         String
   content        String
-  dialogId       Int?
-  dialog         LLMDialog?   @relation(fields: [dialogId], references: [id])
   conversationId Int
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   createdAt      DateTime     @default(now())
 }
 
 model LLMDialog {
-  id             Int           @id @default(autoincrement())
-  sender         String
-  question       String
+  id             Int              @id @default(autoincrement())
+  system         String
   bot            String
-  answer         String
   conversationId Int
-  conversation   Conversation  @relation(fields: [conversationId], references: [id])
-  createdAt      DateTime      @default(now())
-  ChatMessage    ChatMessage[]
+  conversation   Conversation     @relation(fields: [conversationId], references: [id])
+  createdAt      DateTime         @default(now())
+  questionAnswer QuestionAnswer[]
+}
+
+model QuestionAnswer {
+  id          Int       @id @default(autoincrement())
+  question    String
+  answer      String
+  lLMDialogId Int
+  lLMDialog   LLMDialog @relation(fields: [lLMDialogId], references: [id])
+  createdAt   DateTime  @default(now())
 }

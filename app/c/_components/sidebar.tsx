@@ -3,7 +3,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   getLastKTouchedConversations,
   createNewConversation,
-  ConversationWithUser,
+  ConversationShort,
 } from "@/app/c/_actions/conversation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -52,7 +52,7 @@ function SidebarHeader() {
 export default function Sidebar() {
   const { chatId } = useParams();
   const router = useRouter();
-  const [conversations, setConversations] = useState<ConversationWithUser[]>(
+  const [conversations, setConversations] = useState<ConversationShort[]>(
     []
   );
 

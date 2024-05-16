@@ -1,41 +1,61 @@
 "use client";
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { useParams } from "next/navigation";
 import { IncomingMessage, OutgoingMessage } from "@/app/c/_components/message";
-import { llm } from "@/app/c/_actions/llm";
-import TextareaAutosize from "react-textarea-autosize";
+import {
+  getFullConversation,
+  ChatMessage,
+  ConversationFull,
+  saveChatMessage,
+  talkToLMM,
+} from "@/app/c/_actions/conversation";
 
-type Chat = {
-  question: string;
-  answer: string;
-};
+import TextareaAutosize from "react-textarea-autosize";
 
 export default function Home({}) {
   const question = "Hi, please tell me who you are";
-  const [chats, setChats] = useState<Chat[]>([]);
+  const [conversation, setConversation] = useState<ConversationFull>();
+  const [chats, setChats] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
-  async function submit() {
-    console.log(message);
-    setMessage("");
-    const newChats = [
-      ...chats,
-      { question: message.slice(0, 8000), answer: "" },
-    ];
-    setChats(newChats);
-    try {
-      const answer = await llm(message, chats);
-      console.log(message, answer);
-      const newChats2 = [...chats, { question: message, answer }];
-      setChats(newChats2);
-    } catch (e) {
-      if (e instanceof Error) {
-        const newChats2 = [
-          ...chats,
-          { question: message, answer: e.toString() },
-        ];
-        setChats(newChats2);
-      }
+  const { chatId } = useParams();
+
+  useEffect(() => {
+    if (chatId) {
+      const id = Number(chatId);
+      getFullConversation(id).then((conversation) => {
+        if (conversation) {
+          setConversation(conversation);
+          setChats(conversation?.chatMessages || []);
+        } else {
+          throw new Error("Conversation not found");
+        }
+      });
     }
+  }, [chatId]);
+
+  // ...
+  const submit = useCallback(
+    async (text: string) => {
+      setMessage("");
+      if (conversation) {
+        const chat = await saveChatMessage(conversation.id, "user", text);
+        setChats([...chats, chat]);
+        for (const dialog of conversation.dialogs) {
+          talkToLMM(text, dialog.id, conversation.id, dialog.bot).then(
+            (chat) => {
+              setChats((chats) => [...chats, chat]);
+            }
+          );
+        }
+      }
+    },
+    [conversation, chats]
+  );
+
+  if (!conversation) {
+    return <div>Loading...</div>;
   }
+
   return (
     <div className="flex-1">
       {/* Chat Header */}
@@ -45,17 +65,13 @@ export default function Home({}) {
       {/* Chat Messages */}
       <div className="h-screen overflow-y-auto p-4 pb-36">
         {/* Outgoing Message */}
-        {chats
-          .map(({ question, answer }, index) => {
-            const l = [
-              <OutgoingMessage key={`q-${index}`} message={question} />,
-            ];
-            if (answer.length > 0) {
-              l.push(<IncomingMessage key={`a-${index}`} message={answer} />);
-            }
-            return l;
-          })
-          .flat()}
+        {chats.map(({ sender, content }, index) => {
+          if (sender === "user") {
+            return <OutgoingMessage key={`q-${index}`} message={content} />;
+          } else {
+            return <IncomingMessage key={`a-${index}`} message={content} />;
+          }
+        })}
       </div>
       {/* Chat Input */}
       <footer className="bg-white border-t border-gray-300 p-4 absolute bottom-0 w-3/4">
@@ -82,14 +98,14 @@ export default function Home({}) {
                 }, 0);
               } else if (e.key === "Enter") {
                 e.preventDefault();
-                submit();
+                submit(message);
               }
             }}
             value={message}
           />
           <button
             className="bg-indigo-500 text-white px-4 py-2 rounded-md ml-2"
-            onClick={submit}
+            onClick={() => submit(message)}
           >
             Send
           </button>

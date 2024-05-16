@@ -2,24 +2,81 @@
 import Groq from "groq-sdk";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import "dotenv/config";
-import internal from "stream";
 import { BadRequestError, APIError } from "groq-sdk/error";
+import { PrismaClient, Prisma } from "@prisma/client";
+import NodeCache from "node-cache";
+const cache = new NodeCache({ stdTTL: 60, checkperiod: 120 });
 
-type Chat = {
-  question: string;
-  answer: string;
-};
+const prisma = new PrismaClient();
 
 const groq = new Groq({
   apiKey: process.env["GROQ_KEY"],
   httpAgent: new HttpsProxyAgent("http://127.0.0.1:7890"),
 });
 
-function truncateChatsToMaxLength(chats: Chat[], limit: number): Chat[] {
-  let k = 0;
-  const res: Chat[] = [];
+export type Dialog = Prisma.LLMDialogGetPayload<{
+  include: {
+    questionAnswer: true;
+  };
+}>;
 
-  for (const item of chats.reverse()) {
+export type QuestionAnswer = {
+  question: string;
+  answer: string;
+};
+
+export async function getDialogWithLastKQA(dialogId: number, k: number) {
+  return await prisma.lLMDialog.findUnique({
+    where: {
+      id: dialogId,
+    },
+    include: {
+      questionAnswer: {
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: k,
+      },
+    },
+  });
+}
+
+export async function saveQuestionAndAnswer(
+  lLMDialogId: number,
+  question: string,
+  answer: string
+) {
+  return await prisma.questionAnswer.create({
+    data: {
+      question,
+      answer,
+      lLMDialogId,
+    },
+  });
+}
+
+export async function saveDialog(
+  conversationId: number,
+  bot: string,
+  system: string
+) {
+  return await prisma.lLMDialog.create({
+    data: {
+      system,
+      bot,
+      conversationId,
+    },
+  });
+}
+
+function truncateChatsToMaxLength(
+  conversations: QuestionAnswer[],
+  limit: number
+): QuestionAnswer[] {
+  let k = 0;
+  const res: QuestionAnswer[] = [];
+
+  for (const item of conversations.reverse()) {
     const totalLength = item.answer.length + item.question.length;
     if (k + totalLength <= limit) {
       res.push(item);
@@ -32,13 +89,6 @@ function truncateChatsToMaxLength(chats: Chat[], limit: number): Chat[] {
   return res.reverse();
 }
 
-function calculateTotalChatLength(chats: Chat[]): number {
-  return chats.reduce(
-    (total, chat) => total + chat.question.length + chat.answer.length,
-    0
-  );
-}
-
 const max_tokens = 8192;
 let smartLimitation = max_tokens * 7;
 const MAX_TRY_NUM = 10;
@@ -46,7 +96,7 @@ const MAX_TRY_NUM = 10;
 function getMessages(
   text: string,
   limit: number,
-  chats: Chat[] | undefined,
+  conversations: QuestionAnswer[] | undefined,
   system: string | undefined
 ) {
   let messages = [];
@@ -56,9 +106,9 @@ function getMessages(
       content: system,
     });
   }
-  if (chats) {
+  if (conversations) {
     const chatsMessage = truncateChatsToMaxLength(
-      chats,
+      conversations,
       limit - text.length - (system?.length || 0)
     )
       .map(({ question, answer }) => [
@@ -76,22 +126,49 @@ function getMessages(
   return messages;
 }
 
-export async function llm(text: string, chats?: Chat[], system?: string) {
+const bots: Record<
+  string,
+  (
+    messages: Groq.Chat.Completions.CompletionCreateParams.Message[]
+  ) => Promise<Groq.Chat.Completions.ChatCompletion>
+> = {
+  "llama3-8b-8192-basic": async (messages) => {
+    return groq.chat.completions.create({
+      messages,
+      model: "llama3-8b-8192",
+      temperature: 0,
+      max_tokens,
+      top_p: 1,
+    });
+  },
+};
+
+
+export async function llm(text: string, dialogId: number) {
+  const dialog = await getDialogWithLastKQA(dialogId, 1000);
+  if (!dialog) {
+    throw Error("Error: Invalid dialog Id");
+  }
   let limit = smartLimitation;
   for (let i = 0; i < MAX_TRY_NUM; i++) {
-    const messages = getMessages(text, limit, chats, system);
+    const messages = getMessages(
+      text,
+      limit,
+      dialog.questionAnswer,
+      dialog.system
+    );
     try {
-      const chatCompletion = await groq.chat.completions.create({
-        messages,
-        model: "llama3-8b-8192",
-        temperature: 0,
-        max_tokens,
-        top_p: 1,
-      });
+      const chatCompletion = await bots[dialog.bot](messages);
       if (JSON.stringify(messages).length > smartLimitation * 0.9) {
         smartLimitation = smartLimitation * 1.01;
       }
-      return chatCompletion.choices[0]?.message?.content || "";
+      const answer = chatCompletion.choices[0]?.message?.content;
+      if (answer) {
+        await saveQuestionAndAnswer(dialogId, text, answer);
+        return answer;
+      } else {
+        throw Error("No answer");
+      }
     } catch (error) {
       if (error instanceof BadRequestError) {
         const errDetails = error.error as Record<string, any>;
@@ -118,5 +195,5 @@ export async function llm(text: string, chats?: Chat[], system?: string) {
       throw error;
     }
   }
-  throw Error("Error: Maximum retry attempts exceeded for calling llm.")
+  throw Error("Error: Maximum retry attempts exceeded for calling llm.");
 }
