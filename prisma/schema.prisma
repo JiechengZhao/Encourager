@@ -35,7 +35,10 @@ model ChatMessage {
 model LLMDialog {
   id             Int              @id @default(autoincrement())
   system         String
+  template       String?
+  name           String           @default("AI")
   bot            String
+  mode           String           @default("use history")
   conversationId Int
   conversation   Conversation     @relation(fields: [conversationId], references: [id])
   createdAt      DateTime         @default(now())

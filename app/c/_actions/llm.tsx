@@ -5,6 +5,8 @@ import "dotenv/config";
 import { BadRequestError, APIError } from "groq-sdk/error";
 import { PrismaClient, Prisma } from "@prisma/client";
 import NodeCache from "node-cache";
+import { sprintf } from "sprintf-js";
+
 const cache = new NodeCache({ stdTTL: 60, checkperiod: 120 });
 
 const prisma = new PrismaClient();
@@ -93,23 +95,18 @@ const max_tokens = 8192;
 let smartLimitation = max_tokens * 7;
 const MAX_TRY_NUM = 10;
 
-function getMessages(
-  text: string,
-  limit: number,
-  conversations: QuestionAnswer[] | undefined,
-  system: string | undefined
-) {
+function getMessages(text: string, limit: number, dialog: Dialog) {
   let messages = [];
-  if (system) {
+  if (dialog.system.length > 0) {
     messages.push({
       role: "system",
-      content: system,
+      content: dialog.system,
     });
   }
-  if (conversations) {
+  if (dialog.mode === "use history") {
     const chatsMessage = truncateChatsToMaxLength(
-      conversations,
-      limit - text.length - (system?.length || 0)
+      dialog.questionAnswer,
+      limit - text.length - dialog.system.length
     )
       .map(({ question, answer }) => [
         { role: "user", content: question },
@@ -143,20 +140,20 @@ const bots: Record<
   },
 };
 
-
 export async function llm(text: string, dialogId: number) {
   const dialog = await getDialogWithLastKQA(dialogId, 1000);
   if (!dialog) {
     throw Error("Error: Invalid dialog Id");
   }
   let limit = smartLimitation;
+  if (dialog.template) {
+    text = sprintf(dialog.template, text);
+    console.log(text);
+  }
   for (let i = 0; i < MAX_TRY_NUM; i++) {
-    const messages = getMessages(
-      text,
-      limit,
-      dialog.questionAnswer,
-      dialog.system
-    );
+    let messages;
+    messages = getMessages(text, limit, dialog);
+
     try {
       const chatCompletion = await bots[dialog.bot](messages);
       if (JSON.stringify(messages).length > smartLimitation * 0.9) {

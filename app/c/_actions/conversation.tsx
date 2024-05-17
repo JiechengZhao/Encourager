@@ -44,6 +44,11 @@ export async function createNewConversation(
             bot: "llama3-8b-8192-basic",
             system: "",
           },
+          {
+            bot: "llama3-8b-8192-revise",
+            system: "Please revise the user's words, fixing the grammar and vocabulary errors.",
+            mode: "no-history"
+          },
         ],
       },
     },
