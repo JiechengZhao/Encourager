@@ -6,8 +6,6 @@ import {
   getFullConversation,
   ChatMessage,
   ConversationFull,
-  saveChatMessage,
-  talkToLMM,
 } from "@/app/c/_actions/conversation";
 
 import TextareaAutosize from "react-textarea-autosize";
@@ -38,18 +36,31 @@ export default function Home({}) {
     async (text: string) => {
       setMessage("");
       if (conversation) {
-        const chat = await saveChatMessage(conversation.id, "user", text);
-        setChats([...chats, chat]);
-        for (const dialog of conversation.dialogs) {
-          talkToLMM(text, dialog.id, conversation.id, dialog.bot).then(
-            (chat) => {
-              setChats((chats) => [...chats, chat]);
+        const eventSource = new EventSource(
+          `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
+            text
+          )}`
+        );
+
+        eventSource.addEventListener("rename", (event) => {
+          console.log("here fdsaf", event);
+          setConversation((conversation) => {
+            if (conversation) {
+              return { ...conversation, title: JSON.stringify(event.data)};
             }
-          );
-        }
+          });
+        });
+
+        eventSource.addEventListener("message", (event) => {
+          setChats((chats) => [...chats, JSON.parse(event.data)]);
+        });
+
+        eventSource.onerror = function (err) {
+          eventSource.close();
+        };
       }
     },
-    [conversation, chats]
+    [conversation]
   );
 
   if (!conversation) {
@@ -60,7 +71,7 @@ export default function Home({}) {
     <div className="flex-1">
       {/* Chat Header */}
       <header className="bg-white p-4 text-gray-700">
-        <h1 className="text-2xl font-semibold">Alice</h1>
+        <h1 className="text-2xl font-semibold">{conversation.title}</h1>
       </header>
       {/* Chat Messages */}
       <div className="h-screen overflow-y-auto p-4 pb-36">

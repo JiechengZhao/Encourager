@@ -27,6 +27,11 @@ export type QuestionAnswer = {
   answer: string;
 };
 
+export type Message = {
+  role: string;
+  content: string;
+};
+
 export async function getDialogWithLastKQA(dialogId: number, k: number) {
   return await prisma.lLMDialog.findUnique({
     where: {
@@ -91,6 +96,8 @@ function truncateChatsToMaxLength(
   return res.reverse();
 }
 
+
+
 const max_tokens = 8192;
 let smartLimitation = max_tokens * 7;
 const MAX_TRY_NUM = 10;
@@ -123,22 +130,39 @@ function getMessages(text: string, limit: number, dialog: Dialog) {
   return messages;
 }
 
-const bots: Record<
-  string,
-  (
-    messages: Groq.Chat.Completions.CompletionCreateParams.Message[]
-  ) => Promise<Groq.Chat.Completions.ChatCompletion>
-> = {
+const bots: Record<string, (messages: Message[]) => Promise<string>> = {
   "llama3-8b-8192-basic": async (messages) => {
-    return groq.chat.completions.create({
+    const chatCompletion = await groq.chat.completions.create({
       messages,
       model: "llama3-8b-8192",
       temperature: 0,
       max_tokens,
       top_p: 1,
     });
+    return chatCompletion.choices[0]?.message?.content;
   },
 };
+
+export async function simpleTalk(
+  botName: string,
+  text: string,
+  system?: string
+) {
+  if (bots[botName]) {
+    const bot = bots[botName];
+    const messages = [];
+    if (system) {
+      messages.push({
+        role: "system",
+        content: system,
+      });
+    }
+    messages.push({ role: "user", content: text });
+    return bot(messages);
+  } else {
+    throw Error("No such bot");
+  }
+}
 
 export async function llm(text: string, dialogId: number) {
   const dialog = await getDialogWithLastKQA(dialogId, 1000);
@@ -148,18 +172,16 @@ export async function llm(text: string, dialogId: number) {
   let limit = smartLimitation;
   if (dialog.template) {
     text = sprintf(dialog.template, text);
-    console.log(text);
   }
   for (let i = 0; i < MAX_TRY_NUM; i++) {
     let messages;
     messages = getMessages(text, limit, dialog);
 
     try {
-      const chatCompletion = await bots[dialog.bot](messages);
+      const answer = await bots[dialog.bot](messages);
       if (JSON.stringify(messages).length > smartLimitation * 0.9) {
         smartLimitation = smartLimitation * 1.01;
       }
-      const answer = chatCompletion.choices[0]?.message?.content;
       if (answer) {
         await saveQuestionAndAnswer(dialogId, text, answer);
         return answer;
