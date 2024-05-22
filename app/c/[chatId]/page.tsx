@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { IncomingMessage, OutgoingMessage } from "@/app/c/_components/message";
 import {
@@ -9,13 +9,26 @@ import {
 } from "@/app/c/_actions/conversation";
 
 import TextareaAutosize from "react-textarea-autosize";
+import { useCurrentConversation } from "@/app/c/_components/CurrentConversationContext";
 
 export default function Home({}) {
-  const question = "Hi, please tell me who you are";
-  const [conversation, setConversation] = useState<ConversationFull>();
+  const {conversation, setConversation} = useCurrentConversation()
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
   const { chatId } = useParams();
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({
+        behavior: "smooth",
+      });
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [chats]);
 
   useEffect(() => {
     if (chatId) {
@@ -43,19 +56,23 @@ export default function Home({}) {
         );
 
         eventSource.addEventListener("rename", (event) => {
-          console.log("here fdsaf", event);
           setConversation((conversation) => {
             if (conversation) {
-              return { ...conversation, title: JSON.stringify(event.data)};
+              return { ...conversation, title: JSON.parse(event.data) };
             }
           });
+        });
+
+        eventSource.addEventListener("close", (event) => {
+          eventSource.close();
         });
 
         eventSource.addEventListener("message", (event) => {
           setChats((chats) => [...chats, JSON.parse(event.data)]);
         });
 
-        eventSource.onerror = function (err) {
+        eventSource.onerror = (err) => {
+          console.error("Event source error: ", err);
           eventSource.close();
         };
       }
@@ -68,13 +85,13 @@ export default function Home({}) {
   }
 
   return (
-    <div className="flex-1">
+    <div className="flex-1 flex flex-col h-screen">
       {/* Chat Header */}
       <header className="bg-white p-4 text-gray-700">
         <h1 className="text-2xl font-semibold">{conversation.title}</h1>
       </header>
       {/* Chat Messages */}
-      <div className="h-screen overflow-y-auto p-4 pb-36">
+      <div className="flex-1 overflow-y-auto p-4 pb-36">
         {/* Outgoing Message */}
         {chats.map(({ sender, content }, index) => {
           if (sender === "user") {
@@ -83,9 +100,10 @@ export default function Home({}) {
             return <IncomingMessage key={`a-${index}`} message={content} />;
           }
         })}
+        <div ref={chatEndRef} />
       </div>
       {/* Chat Input */}
-      <footer className="bg-white border-t border-gray-300 p-4 absolute bottom-0 w-3/4">
+      <footer className="bg-white border-t border-gray-300 p-4">
         <div className="flex items-center">
           <TextareaAutosize
             placeholder="Type a message..."

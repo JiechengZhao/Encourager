@@ -2,6 +2,7 @@
 import { PrismaClient, Prisma } from "@prisma/client";
 import { nanoid } from "nanoid";
 import { llm, simpleTalk } from "./llm";
+import dialogTemplates from "./dialogTemplates";
 
 const prisma = new PrismaClient();
 
@@ -39,20 +40,7 @@ export async function createNewConversation(
       title: title || `undefined-${nanoid()}`,
       description,
       dialogs: {
-        create: [
-          {
-            name: "main",
-            bot: "llama3-8b-8192-basic",
-            system: "",
-          },
-          {
-            name: "revisor",
-            bot: "llama3-8b-8192-basic",
-            system:
-              "Please revise the user's words, fixing the grammar and vocabulary errors.",
-            mode: "no-history",
-          },
-        ],
+        create: [dialogTemplates.main],
       },
     },
   });
@@ -102,14 +90,11 @@ function normalizeString(str: string) {
 }
 
 export type Order = {
-  type: string,
-  content: string
-}
+  type: string;
+  content: string;
+};
 
-async function system(
-  conversation: ConversationFull,
-  text: string,
-) {
+async function system(conversation: ConversationFull, text: string) {
   if (text === "/rename") {
     const messages = truncateChatMessages(
       conversation.chatMessages.filter(
@@ -119,7 +104,24 @@ async function system(
     ).join("\n");
     const question = `Please give a title to the following conversation. Do not include any additional comments. : \n${messages}`;
     const answer = await simpleTalk("llama3-8b-8192-basic", question);
-    return { type: "rename", content: normalizeString(answer) };
+    const title = normalizeString(answer);
+    await prisma.conversation.update({
+      where: {
+        id: conversation.id,
+      },
+      data: {
+        title: title,
+      },
+    });
+    return { type: "rename", content: title };
+  } else if (text.startsWith("/add-revisor")) {
+    const dialog = await prisma.lLMDialog.create({
+      data: {
+        ...dialogTemplates.revisor,
+        conversationId: conversation.id,
+      },
+    });
+    return { type: "add-revisor", content: "revisor added" };
   }
 }
 
@@ -127,29 +129,43 @@ export async function talk(
   conversationId: number,
   text: string,
   messageCallback: (message: ChatMessage) => void,
-  orderCallback: (order: Order) => void,
-  end: () => void
+  orderCallback: (order: Order) => void
 ) {
   const conversation = await getFullConversation(conversationId);
+
   if (conversation) {
     const chat = await saveChatMessage(conversation.id, "user", text);
     messageCallback(chat);
+    let systemNotCalled = true;
+    if (text.startsWith("/")) {
+      const order = await system(conversation, text);
+      if (order) {
+        orderCallback(order);
+        return;
+      } else {
+        systemNotCalled = false;
+      }
+    }
+
     await Promise.allSettled([
-      ...conversation.dialogs.map((dialog) =>
-        talkToLMM(text, dialog.id, conversation.id, dialog.name).then(
-          (chat) => {
-            messageCallback(chat);
-          }
-        )
-      ),
-      system(conversation, text).then((order) => {
-        if (order) {
-          orderCallback(order)
-        }
-      }),
+      ...conversation.dialogs
+        .filter((dialog) => !dialog.mode.includes("inactive"))
+        .map((dialog) =>
+          talkToLMM(text, dialog.id, conversation.id, dialog.name).then(
+            (chat) => {
+              messageCallback(chat);
+            }
+          )
+        ),
+      systemNotCalled
+        ? system(conversation, text).then((order) => {
+            if (order) {
+              orderCallback(order);
+            }
+          })
+        : null,
     ]);
   }
-  end();
 }
 
 export async function getFullConversation(id: number) {

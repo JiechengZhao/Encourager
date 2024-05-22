@@ -6,6 +6,7 @@ import {
   ConversationShort,
 } from "@/app/c/_actions/conversation";
 import { useCallback, useEffect, useState } from "react";
+import { useCurrentConversation } from "./CurrentConversationContext";
 
 function Item({
   name,
@@ -17,7 +18,6 @@ function Item({
   conversationId: number;
 }) {
   const router = useRouter();
-
   const handleClick = () => {
     router.push(`/c/${conversationId}`);
   };
@@ -50,17 +50,21 @@ function SidebarHeader() {
 }
 
 export default function Sidebar() {
-  const { chatId } = useParams();
   const router = useRouter();
-  const [conversations, setConversations] = useState<ConversationShort[]>(
-    []
-  );
+  const { conversation } = useCurrentConversation();
+  const [conversations, setConversations] = useState<ConversationShort[]>([]);
 
   useEffect(() => {
     getLastKTouchedConversations(20).then((cons) => {
+      if (conversation) {
+        // Remove the existing conversation with the same ID, if any
+        cons = cons.filter((conv) => conv.id !== conversation.id);
+        // Add the current conversation to the beginning of the list
+        cons.unshift(conversation);
+      }
       setConversations(cons);
     });
-  }, [chatId]);
+  }, [conversation]);
 
   const newConversation = useCallback(async () => {
     const conversation = await createNewConversation();
@@ -69,7 +73,7 @@ export default function Sidebar() {
 
   return (
     <div className="flex flex-col w-1/4 bg-white border-r border-gray-300 h-screen">
-      <div className="flex-grow overflow-y-auto p-3 mb-9 pb-20">
+      <div className="flex-grow overflow-y-auto p-3 mb-1 pb-10">
         {conversations.map((conversation) => {
           return (
             <Item
@@ -82,8 +86,10 @@ export default function Sidebar() {
         })}
       </div>
       <footer className="p-3">
-        <button className="w-full py-2 px-4 bg-blue-500 text-white text-2xl font-semibold rounded hover:bg-blue-600"
-        onClick={newConversation}>
+        <button
+          className="w-full py-2 px-4 bg-blue-500 text-white text-2xl font-semibold rounded hover:bg-blue-600"
+          onClick={newConversation}
+        >
           + New Chat
         </button>
       </footer>

@@ -110,7 +110,7 @@ function getMessages(text: string, limit: number, dialog: Dialog) {
       content: dialog.system,
     });
   }
-  if (dialog.mode === "use history") {
+  if (dialog.mode.includes("use history")) {
     const chatsMessage = truncateChatsToMaxLength(
       dialog.questionAnswer,
       limit - text.length - dialog.system.length

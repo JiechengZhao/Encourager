@@ -21,6 +21,16 @@ model Conversation {
   dialogs      LLMDialog[]
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  SubDialog    SubDialog[]
+}
+
+model SubDialog {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  createdAt   DateTime      @default(now())
+  ChatMessage ChatMessage[]
 }
 
 model ChatMessage {
@@ -28,6 +38,8 @@ model ChatMessage {
   sender         String
   content        String
   conversationId Int
+  subDialogId    Int?
+  SubDialog      SubDialog?   @relation(fields: [subDialogId], references: [id])
   conversation   Conversation @relation(fields: [conversationId], references: [id])
   createdAt      DateTime     @default(now())
 }
