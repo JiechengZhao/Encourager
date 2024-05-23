@@ -4,6 +4,7 @@ import { talk } from "@/app/c/_actions/conversation";
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const conversationId = parseInt(url.searchParams.get("conversationId") || "");
+  const dialogId = parseInt(url.searchParams.get("dialogId") || "");
   const text = url.searchParams.get("text") || "";
   const readableStream = new ReadableStream({
     async start(controller) {
@@ -12,6 +13,7 @@ export async function GET(req: NextRequest) {
         await talk(
           conversationId,
           text,
+          dialogId,
           (message) => {
             const formattedMessage = `data: ${JSON.stringify(message)}\n\n`;
             controller.enqueue(new TextEncoder().encode(formattedMessage));

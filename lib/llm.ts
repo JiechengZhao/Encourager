@@ -1,36 +1,16 @@
-"use server";
 import Groq from "groq-sdk";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import "dotenv/config";
-import { BadRequestError, APIError } from "groq-sdk/error";
-import { PrismaClient, Prisma } from "@prisma/client";
-import NodeCache from "node-cache";
+import { BadRequestError } from "groq-sdk/error";
 import { sprintf } from "sprintf-js";
-
-const cache = new NodeCache({ stdTTL: 60, checkperiod: 120 });
-
-const prisma = new PrismaClient();
-
+import { prisma } from "@/lib/db";
+import { Dialog, QuestionAnswer } from "@/lib/types";
+import { Bot } from "./types";
 const groq = new Groq({
   apiKey: process.env["GROQ_KEY"],
   httpAgent: new HttpsProxyAgent("http://127.0.0.1:7890"),
 });
 
-export type Dialog = Prisma.LLMDialogGetPayload<{
-  include: {
-    questionAnswer: true;
-  };
-}>;
-
-export type QuestionAnswer = {
-  question: string;
-  answer: string;
-};
-
-export type Message = {
-  role: string;
-  content: string;
-};
 
 export async function getDialogWithLastKQA(dialogId: number, k: number) {
   return await prisma.lLMDialog.findUnique({
@@ -96,12 +76,6 @@ function truncateChatsToMaxLength(
   return res.reverse();
 }
 
-
-
-const max_tokens = 8192;
-let smartLimitation = max_tokens * 7;
-const MAX_TRY_NUM = 10;
-
 function getMessages(text: string, limit: number, dialog: Dialog) {
   let messages = [];
   if (dialog.system.length > 0) {
@@ -130,17 +104,22 @@ function getMessages(text: string, limit: number, dialog: Dialog) {
   return messages;
 }
 
-const bots: Record<string, (messages: Message[]) => Promise<string>> = {
-  "llama3-8b-8192-basic": async (messages) => {
+const bots: Record<string,Bot> = {
+  "llama3-8b-8192-basic": {
+    call: async (messages) => {
     const chatCompletion = await groq.chat.completions.create({
       messages,
       model: "llama3-8b-8192",
       temperature: 0,
-      max_tokens,
+      max_tokens: 8192,
       top_p: 1,
     });
     return chatCompletion.choices[0]?.message?.content;
   },
+  smartLimitation: 60000,
+  MAX_TRY_NUM: 10,
+
+},
 };
 
 export async function simpleTalk(
@@ -158,29 +137,31 @@ export async function simpleTalk(
       });
     }
     messages.push({ role: "user", content: text });
-    return bot(messages);
+    return bot.call(messages);
   } else {
     throw Error("No such bot");
   }
 }
 
-export async function llm(text: string, dialogId: number) {
+export async function dialogTalk(text: string, dialogId: number) {
   const dialog = await getDialogWithLastKQA(dialogId, 1000);
   if (!dialog) {
     throw Error("Error: Invalid dialog Id");
   }
-  let limit = smartLimitation;
   if (dialog.template) {
     text = sprintf(dialog.template, text);
   }
-  for (let i = 0; i < MAX_TRY_NUM; i++) {
+  const bot = bots[dialog.bot]
+  let limit = bot.smartLimitation;
+
+  for (let i = 0; i < bot.MAX_TRY_NUM; i++) {
     let messages;
     messages = getMessages(text, limit, dialog);
 
     try {
-      const answer = await bots[dialog.bot](messages);
-      if (JSON.stringify(messages).length > smartLimitation * 0.9) {
-        smartLimitation = smartLimitation * 1.01;
+      const answer = await bot.call(messages);
+      if (JSON.stringify(messages).length > bot.smartLimitation * 0.9) {
+        bot.smartLimitation = bot.smartLimitation * 1.01;
       }
       if (answer) {
         await saveQuestionAndAnswer(dialogId, text, answer);
@@ -203,11 +184,11 @@ export async function llm(text: string, dialogId: number) {
             "Enconter context_length_exceeded, adjust truncate setting and retry."
           );
           console.error(
-            `Current limit ${limit}, Current global limit ${smartLimitation}`
+            `Current limit ${limit}, Current global limit ${bot.smartLimitation}`
           );
           console.error(`Groq: BadRequestError: ${JSON.stringify(errDetails)}`);
           limit = limit * 0.7;
-          smartLimitation = smartLimitation * 0.95;
+          bot.smartLimitation = bot.smartLimitation * 0.95;
           continue;
         }
       }

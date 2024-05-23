@@ -2,17 +2,14 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
 import { IncomingMessage, OutgoingMessage } from "@/app/c/_components/message";
-import {
-  getFullConversation,
-  ChatMessage,
-  ConversationFull,
-} from "@/app/c/_actions/conversation";
+import { getFullConversation } from "@/app/c/_actions/conversation";
+import { ChatMessage } from "@prisma/client";
 
 import TextareaAutosize from "react-textarea-autosize";
 import { useCurrentConversation } from "@/app/c/_components/CurrentConversationContext";
 
 export default function Home({}) {
-  const {conversation, setConversation} = useCurrentConversation()
+  const { conversation, setConversation } = useCurrentConversation();
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
   const { chatId } = useParams();

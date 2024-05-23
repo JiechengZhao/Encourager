@@ -1,23 +1,17 @@
 "use server";
-import { PrismaClient, Prisma } from "@prisma/client";
 import { nanoid } from "nanoid";
-import { llm, simpleTalk } from "./llm";
-import dialogTemplates from "./dialogTemplates";
+import { dialogTalk } from "../../../lib/llm";
+import dialogTemplates from "../../../lib/dialogTemplates";
+import { system } from "./system";
+import { ChatMessage } from "@prisma/client";
+import {
+  conversationFullInclude,
+  conversationShortSelect,
+  ConversationFull,
+  Order,
+} from "@/lib/types";
 
-const prisma = new PrismaClient();
-
-const conversationShortSelect = {
-  id: true,
-  title: true,
-  description: true,
-  updatedAt: true,
-};
-
-export type ConversationShort = Prisma.ConversationGetPayload<{
-  select: typeof conversationShortSelect;
-}>;
-
-export type ChatMessage = Prisma.ChatMessageGetPayload<{}>;
+import { getSettings, prisma } from "@/lib/db";
 
 export async function getLastKTouchedConversations(k: number) {
   const conversations = await prisma.conversation.findMany({
@@ -47,124 +41,62 @@ export async function createNewConversation(
   return conversation;
 }
 
-const conversationFullInclude = {
-  dialogs: true,
-  chatMessages: true,
-};
-export type ConversationFull = Prisma.ConversationGetPayload<{
-  include: typeof conversationFullInclude;
-}>;
-
-async function talkToLMM(
+function talkToAllDialog(
+  conversation: ConversationFull,
   text: string,
-  dialogId: number,
-  conversationId: number,
-  botName: string
+  messageCallback: (message: ChatMessage) => void
 ) {
-  const answer = await llm(text, dialogId);
-  return await saveChatMessage(conversationId, botName, answer);
-}
-
-function truncateChatMessages(
-  messages: ChatMessage[],
-  limit: number
-): string[] {
-  let k = 0;
-  const res: string[] = [];
-
-  for (const item of messages.reverse()) {
-    const s = `${item.sender}: ${item.content}`;
-    if (k + s.length <= limit) {
-      res.push(s);
-      k += s.length;
-    } else {
-      break; // Stop adding items once the limit is exceeded
-    }
-  }
-
-  return res.reverse();
-}
-
-function normalizeString(str: string) {
-  return str.replace(/^"|"$/g, "");
-}
-
-export type Order = {
-  type: string;
-  content: string;
-};
-
-async function system(conversation: ConversationFull, text: string) {
-  if (text === "/rename") {
-    const messages = truncateChatMessages(
-      conversation.chatMessages.filter(
-        (value) => value.sender === "main" || value.sender === "user"
-      ),
-      10000
-    ).join("\n");
-    const question = `Please give a title to the following conversation. Do not include any additional comments. : \n${messages}`;
-    const answer = await simpleTalk("llama3-8b-8192-basic", question);
-    const title = normalizeString(answer);
-    await prisma.conversation.update({
-      where: {
-        id: conversation.id,
-      },
-      data: {
-        title: title,
-      },
-    });
-    return { type: "rename", content: title };
-  } else if (text.startsWith("/add-revisor")) {
-    const dialog = await prisma.lLMDialog.create({
-      data: {
-        ...dialogTemplates.revisor,
-        conversationId: conversation.id,
-      },
-    });
-    return { type: "add-revisor", content: "revisor added" };
-  }
+  return conversation.dialogs
+    .filter((dialog) => !dialog.mode.includes("inactive"))
+    .map((dialog) =>
+      dialogTalk(text, dialog.id)
+        .then((answer) => {
+          return prisma.chatMessage.create({
+            data: {
+              sender: dialog.name,
+              content: answer,
+              conversationId: conversation.id,
+            },
+          });
+        })
+        .then((chat) => {
+          messageCallback(chat);
+        })
+    );
 }
 
 export async function talk(
   conversationId: number,
   text: string,
+  subDialogId: number | undefined,
   messageCallback: (message: ChatMessage) => void,
   orderCallback: (order: Order) => void
 ) {
   const conversation = await getFullConversation(conversationId);
 
   if (conversation) {
-    const chat = await saveChatMessage(conversation.id, "user", text);
+    const chat = await prisma.chatMessage.create({
+      data: {
+        sender: "user",
+        content: text,
+        conversationId: conversation.id,
+        subDialogId,
+      },
+    });
     messageCallback(chat);
-    let systemNotCalled = true;
-    if (text.startsWith("/")) {
-      const order = await system(conversation, text);
-      if (order) {
-        orderCallback(order);
-        return;
-      } else {
-        systemNotCalled = false;
-      }
-    }
 
-    await Promise.allSettled([
-      ...conversation.dialogs
-        .filter((dialog) => !dialog.mode.includes("inactive"))
-        .map((dialog) =>
-          talkToLMM(text, dialog.id, conversation.id, dialog.name).then(
-            (chat) => {
-              messageCallback(chat);
-            }
-          )
-        ),
-      systemNotCalled
-        ? system(conversation, text).then((order) => {
-            if (order) {
-              orderCallback(order);
-            }
-          })
-        : null,
-    ]);
+    if (subDialogId || text.startsWith("/")) {
+      await system(conversation, chat, subDialogId, orderCallback);
+    } else {
+      const settings = await getSettings();
+
+      await Promise.allSettled([
+        ...talkToAllDialog(conversation, text, messageCallback),
+        settings.systemListen
+          ? system(conversation, chat, subDialogId, orderCallback)
+          : null,
+      ]);
+    }
   }
 }
 
@@ -176,18 +108,4 @@ export async function getFullConversation(id: number) {
     include: conversationFullInclude,
   });
   return conversation;
-}
-
-export async function saveChatMessage(
-  conversationId: number,
-  sender: string,
-  content: string
-) {
-  return await prisma.chatMessage.create({
-    data: {
-      sender,
-      content,
-      conversationId,
-    },
-  });
 }

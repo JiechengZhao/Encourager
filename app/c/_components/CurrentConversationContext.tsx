@@ -6,7 +6,7 @@ import React, {
   ReactNode,
   useEffect,
 } from "react";
-import { ConversationFull } from "../_actions/conversation";
+import { ConversationFull } from "@/lib/types";
 
 interface CurrentConversationContextType {
   conversation: ConversationFull | undefined;
