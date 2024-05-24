@@ -11,7 +11,6 @@ const groq = new Groq({
   httpAgent: new HttpsProxyAgent("http://127.0.0.1:7890"),
 });
 
-
 export async function getDialogWithLastKQA(dialogId: number, k: number) {
   return await prisma.lLMDialog.findUnique({
     where: {
@@ -104,22 +103,21 @@ function getMessages(text: string, limit: number, dialog: Dialog) {
   return messages;
 }
 
-const bots: Record<string,Bot> = {
+const bots: Record<string, Bot> = {
   "llama3-8b-8192-basic": {
     call: async (messages) => {
-    const chatCompletion = await groq.chat.completions.create({
-      messages,
-      model: "llama3-8b-8192",
-      temperature: 0,
-      max_tokens: 8192,
-      top_p: 1,
-    });
-    return chatCompletion.choices[0]?.message?.content;
+      const chatCompletion = await groq.chat.completions.create({
+        messages,
+        model: "llama3-8b-8192",
+        temperature: 0,
+        max_tokens: 8192,
+        top_p: 1,
+      });
+      return chatCompletion.choices[0]?.message?.content;
+    },
+    smartLimitation: 60000,
+    MAX_TRY_NUM: 10,
   },
-  smartLimitation: 60000,
-  MAX_TRY_NUM: 10,
-
-},
 };
 
 export async function simpleTalk(
@@ -137,7 +135,16 @@ export async function simpleTalk(
       });
     }
     messages.push({ role: "user", content: text });
-    return bot.call(messages);
+    const answer = await bot.call(messages);
+    await prisma.simpleTalk.create({
+      data: {
+        botName,
+        question: text,
+        answer,
+        system,
+      },
+    });
+    return answer
   } else {
     throw Error("No such bot");
   }
@@ -151,7 +158,7 @@ export async function dialogTalk(text: string, dialogId: number) {
   if (dialog.template) {
     text = sprintf(dialog.template, text);
   }
-  const bot = bots[dialog.bot]
+  const bot = bots[dialog.bot];
   let limit = bot.smartLimitation;
 
   for (let i = 0; i < bot.MAX_TRY_NUM; i++) {

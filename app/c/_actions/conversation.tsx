@@ -86,15 +86,18 @@ export async function talk(
     messageCallback(chat);
 
     if (subDialogId || text.startsWith("/")) {
-      await system(conversation, chat, subDialogId, orderCallback);
+      await system(
+        conversation,
+        chat,
+        subDialogId,
+        messageCallback,
+        orderCallback
+      );
     } else {
       const settings = await getSettings();
 
       await Promise.allSettled([
         ...talkToAllDialog(conversation, text, messageCallback),
-        settings.systemListen
-          ? system(conversation, chat, subDialogId, orderCallback)
-          : null,
       ]);
     }
   }

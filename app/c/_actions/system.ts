@@ -33,6 +33,7 @@ export async function system(
   conversation: ConversationFull,
   chat: ChatMessage,
   subDialogId: number | undefined,
+  messageCallback: (message: ChatMessage) => void,
   orderCallback: (order: Order) => void
 ) {
   let dialog;
@@ -54,6 +55,7 @@ export async function system(
           status: "OPEN",
         },
       });
+      orderCallback({ type: "open-dialog", content: dialog.id });
     } else if (chat.content.startsWith("/add-agent")) {
       dialog = await prisma.subDialog.create({
         data: {
@@ -62,6 +64,7 @@ export async function system(
           status: "OPEN",
         },
       });
+      orderCallback({ type: "open-dialog", content: dialog.id });
     }
     if (dialog) {
       await prisma.chatMessage.update({
@@ -78,14 +81,37 @@ export async function system(
   }
   const chatMessages = await prisma.chatMessage.findMany({
     where: {
-      subDialogId: subDialogId,
+      subDialogId: dialog.id,
     },
     orderBy: {
       id: "asc",
     },
   });
   if (dialog.task == "rename") {
-    return await systemRename(conversation, dialog, chatMessages);
+    const renameRes = await systemRename(conversation, dialog, chatMessages);
+    if (renameRes.type === "system-message") {
+      const message = await prisma.chatMessage.create({
+        data: {
+          sender: "system",
+          content: renameRes.content,
+          conversationId: conversation.id,
+          subDialogId: dialog.id,
+        },
+      });
+      messageCallback(message);
+    } else {
+      orderCallback(renameRes);
+      await prisma.subDialog.update({
+        where: {
+          id: subDialogId,
+        },
+        data: {
+          status: "CLOSE",
+        },
+      });
+      orderCallback({ type: "close-dialog", content: "" });
+    }
+    return;
   } else if (dialog.task == "add-agent") {
     return await systemAddAgent(conversation, dialog, chatMessages);
   }
@@ -111,17 +137,42 @@ async function systemRename(
     if (argument) {
       return { type: "rename", content: argument };
     } else {
-      const title = await suggestTitle(conversation.chatMessages)
-      return { type: "system", content: `how about this title? {title}` };
+      const title = await suggestTitle(conversation.chatMessages);
+      await prisma.subDialog.update({
+        where: {
+          id: subDialog.id,
+        },
+        data: {
+          payload: JSON.stringify({
+            title: title.title,
+            ...JSON.parse(subDialog.payload || "{}"),
+          }),
+        },
+      });
+      return {
+        type: "system-message",
+        content: `The conversation will be renamed to "${title.title}", is that OK? Answer Yes or No, if no please give a hint or suggest another name.`,
+      };
     }
   } else {
-
-    await suggestTitle(conversation.chatMessages);
+    const instruction = await renameAgentRouter(chatMessages);
+    if (instruction?.action === "Rename the title") {
+      return { type: "rename-title", content: instruction?.title };
+    } else {
+      const title = await suggestTitle(conversation.chatMessages, chatMessages);
+      return {
+        type: "system-message",
+        content: `The conversation will be renamed to "${title.title}", is that OK? Answer Yes or No, if no please give a hint or suggest another name.`,
+      };
+    }
   }
 }
 
-async function suggestTitle(chatMessages: ChatMessage[], hint?: string) {
-  const messages = truncateChatMessages(
+async function suggestTitle(
+  chatMessages: ChatMessage[],
+  dialogMessages?: ChatMessage[]
+) {
+  const chat = truncateChatMessages(
     chatMessages.filter(
       (value) =>
         (value.sender === "main" || value.sender === "user") &&
@@ -129,13 +180,33 @@ async function suggestTitle(chatMessages: ChatMessage[], hint?: string) {
     ),
     10000
   ).join("\n");
-  const question = `Please give a title to the following conversation. ${hint||""} Do not include any additional comments. : 
-${messages}`;
-  const answer = await simpleTalk("llama3-8b-8192-basic", question);
-  const title = normalizeString(answer);
+  let dialog = "";
+  if (dialogMessages) {
+    const dialogText = truncateChatMessages(dialogMessages, 1000).join("\n");
+    dialog = `Here is your dialog with user.
+------DIALOG BEGIN------
+${dialogText}
+------DIALOG BEGIN------
+
+`;
+  }
+  const question = `You are a conversation manager agent. The user wants to rename the title of a conversation. 
+
+${dialog}
+Here is user's conversation.
+------CONVERSATION BEGIN------
+${chat}
+------CONVERSATION END------
+
+Question: What is a good title for this conversation? Please give a JSON only answer, do not add other content.
+  {"title":?}
+`;
+  const answerText = await simpleTalk("llama3-8b-8192-basic", question);
+
+  return JSON.parse(answerText);
 }
 
-async function renameAgentRouter(chatMessages: ChatMessage[], hint?: string) {
+async function renameAgentRouter(chatMessages: ChatMessage[]) {
   const messages = truncateChatMessages(chatMessages, 10000).join("\n");
   const question = `You are a conversation manager agent. The user wants to rename the title of a conversation. You cannot see the conversation yet. Here is the dialog with the user and you:
 
@@ -151,11 +222,30 @@ Question: What should you do next? Please only give a JSON to answer this.
 `;
   const answerText = await simpleTalk("llama3-8b-8192-basic", question);
   const answer = JSON.parse(answerText);
-  return answer
+  return answer;
 }
+
+const agentSet = new Set(["revisor"]);
 
 async function systemAddAgent(
   conversation: ConversationFull,
   subDialog: SubDialog,
   chatMessages: ChatMessage[]
-) {}
+) {
+  if (chatMessages.length === 0) {
+    throw Error("Should be at least one message in dialog.");
+  } else if (chatMessages.length === 1) {
+    const argument = extractCommandArgument(
+      chatMessages[0].content,
+      "/add-agent"
+    );
+    if (argument && agentSet.has(argument)) {
+      return { type: "add-agent", content: argument };
+    } else {
+      return {
+        type: "system-message",
+        content: `Please select agent ${agentSet}`,
+      };
+    }
+  }
+}

@@ -43,5 +43,5 @@ export type Bot = {
 
 export type Order = {
   type: string;
-  content: string;
+  content: any;
 };

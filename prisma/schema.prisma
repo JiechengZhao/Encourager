@@ -35,6 +35,7 @@ model SubDialog {
   conversationId Int
   conversation   Conversation  @relation(fields: [conversationId], references: [id])
   task           String
+  payload        String?
   status         String
   createdAt      DateTime      @default(now())
   ChatMessage    ChatMessage[]
@@ -71,4 +72,13 @@ model QuestionAnswer {
   lLMDialogId Int
   lLMDialog   LLMDialog @relation(fields: [lLMDialogId], references: [id])
   createdAt   DateTime  @default(now())
+}
+
+model SimpleTalk {
+  id        Int      @id @default(autoincrement())
+  botName   String
+  question  String
+  answer    String
+  system    String?
+  createdAt DateTime @default(now())
 }

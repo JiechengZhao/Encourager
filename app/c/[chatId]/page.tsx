@@ -10,6 +10,7 @@ import { useCurrentConversation } from "@/app/c/_components/CurrentConversationC
 
 export default function Home({}) {
   const { conversation, setConversation } = useCurrentConversation();
+  const [dialogId, setDialogId] = useState<number>(-1);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [message, setMessage] = useState("");
   const { chatId } = useParams();
@@ -46,18 +47,30 @@ export default function Home({}) {
     async (text: string) => {
       setMessage("");
       if (conversation) {
+        const dialogQuery = dialogId > 0 ? `&dialogId=${dialogId}` : ""
         const eventSource = new EventSource(
           `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
             text
-          )}`
+          )}${dialogQuery}`
         );
 
-        eventSource.addEventListener("rename", (event) => {
+        eventSource.addEventListener("rename-title", (event) => {
           setConversation((conversation) => {
             if (conversation) {
               return { ...conversation, title: JSON.parse(event.data) };
             }
           });
+        });
+        eventSource.addEventListener("open-dialog", (event) => {
+          setDialogId(JSON.parse(event.data));
+        });
+
+        eventSource.addEventListener("close-dialog", () => {
+          setDialogId(-1);
+        });
+
+        eventSource.addEventListener("system-message", (event) => {
+          setChats((chats) => [...chats, JSON.parse(event.data)]);
         });
 
         eventSource.addEventListener("close", (event) => {
@@ -74,7 +87,7 @@ export default function Home({}) {
         };
       }
     },
-    [conversation]
+    [conversation, dialogId]
   );
 
   if (!conversation) {
