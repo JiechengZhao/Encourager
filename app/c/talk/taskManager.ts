@@ -1,14 +1,12 @@
 import { ConversationFull, Order } from "@/lib/types";
 import { simpleTalk } from "@/lib/llm";
-import { prisma } from "@/lib/db";
+import { prisma, getChatMessagesOfDialog } from "@/lib/db";
 import { SubDialog, ChatMessage } from "@prisma/client";
 import { extractCommandArgument } from "@/lib/tools";
 import { truncateChatMessages } from "@/lib/tools";
 import { BaseSystemAgent } from "./baseSystemAgent";
 
-export class RenameAgent extends BaseSystemAgent {
-
-
+export class TaskManager extends BaseSystemAgent {
   constructor(
     conversation: ConversationFull,
     dialog: SubDialog,
@@ -16,18 +14,6 @@ export class RenameAgent extends BaseSystemAgent {
     orderCallback: (order: Order) => void
   ) {
     super(conversation, dialog, messageCallback, orderCallback);
-  }
-
-  private async updateTitle(title: string) {
-    await prisma.subDialog.update({
-      where: { id: this.dialog.id },
-      data: {
-        payload: JSON.stringify({
-          title: title,
-          ...JSON.parse(this.dialog.payload || "{}"),
-        }),
-      },
-    });
   }
 
   async act() {
@@ -38,17 +24,12 @@ export class RenameAgent extends BaseSystemAgent {
     if (this.chatMessages.length === 1) {
       const argument = extractCommandArgument(
         this.chatMessages[0].content,
-        "/rename"
+        "/task"
       );
       if (argument) {
-        await this.orderThencloseDialog({
-          type: "rename-title",
-          content: argument,
-        });
         return;
       } else {
         const title = await this.suggestTitle();
-        await this.updateTitle(title.title);
         await this.message(
           `The conversation will be renamed to "${title.title}", is that OK? Answer Yes or No, if no please give a hint or suggest another name.`
         );
@@ -57,10 +38,7 @@ export class RenameAgent extends BaseSystemAgent {
     } else {
       const instruction = await this.renameAgentRouter(this.chatMessages);
       if (instruction?.action === "Rename the title") {
-        await this.orderThencloseDialog({
-          type: "rename-title",
-          content: instruction?.title,
-        });
+
         return;
       } else {
         const title = await this.suggestTitle(this.chatMessages);

@@ -7,8 +7,6 @@ import { BaseSystemAgent } from "./baseSystemAgent";
 const agentSet = new Set(["revisor"]);
 
 export class AddAgentAgent extends BaseSystemAgent {
-  chatMessages: ChatMessage[];
-
   constructor(
     conversation: ConversationFull,
     dialog: SubDialog,
@@ -16,11 +14,6 @@ export class AddAgentAgent extends BaseSystemAgent {
     orderCallback: (order: Order) => void
   ) {
     super(conversation, dialog, messageCallback, orderCallback);
-    this.chatMessages = [];
-  }
-
-  async init() {
-    this.chatMessages = await getChatMessagesOfDialog(this.dialog);
   }
 
   private async updateTitle(title: string) {
@@ -47,10 +40,10 @@ export class AddAgentAgent extends BaseSystemAgent {
       );
       if (argument && agentSet.has(argument)) {
         this.orderThencloseDialog({ type: "add-agent", content: argument });
-        return 
+        return;
       } else {
         this.message(`Please select agent ${agentSet}`);
-        return
+        return;
       }
     }
   }

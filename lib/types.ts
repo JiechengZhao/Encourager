@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, Task } from "@prisma/client";
 
 export const conversationShortSelect = {
   id: true,
@@ -25,6 +25,11 @@ export type Dialog = Prisma.LLMDialogGetPayload<{
     questionAnswer: true;
   };
 }>;
+
+export type TaskFull = {
+  subtasks: TaskFull[];
+  parent: TaskFull | undefined;
+} & Task;
 
 export type QuestionAnswer = {
   question: string;

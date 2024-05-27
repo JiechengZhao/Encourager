@@ -1,5 +1,5 @@
 import { ConversationFull, Order } from "@/lib/types";
-import { prisma } from "@/lib/db";
+import { prisma, getChatMessagesOfDialog } from "@/lib/db";
 import { SubDialog, ChatMessage } from "@prisma/client";
 
 export class BaseSystemAgent {
@@ -7,6 +7,7 @@ export class BaseSystemAgent {
   dialog: SubDialog;
   messageCallback: (message: ChatMessage) => void;
   orderCallback: (order: Order) => void;
+  chatMessages: ChatMessage[];
 
   constructor(
     conversation: ConversationFull,
@@ -18,6 +19,7 @@ export class BaseSystemAgent {
     this.dialog = dialog;
     this.messageCallback = messageCallback;
     this.orderCallback = orderCallback;
+    this.chatMessages = [];
   }
 
   async orderThencloseDialog(order: Order) {
@@ -42,9 +44,9 @@ export class BaseSystemAgent {
   }
 
   async init() {
-
+    this.chatMessages = await getChatMessagesOfDialog(this.dialog);
   }
   async act() {
-    
+    throw Error("function not implemented")
   }
 }
