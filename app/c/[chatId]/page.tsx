@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useParams } from "next/navigation";
-import { IncomingMessage, OutgoingMessage } from "@/app/c/_components/message";
+import { Message } from "@/app/c/_components/message";
 import { getFullConversation } from "@/app/c/_actions/conversation";
 import { ChatMessage } from "@prisma/client";
 
@@ -47,7 +47,7 @@ export default function Home({}) {
     async (text: string) => {
       setMessage("");
       if (conversation) {
-        const dialogQuery = dialogId > 0 ? `&dialogId=${dialogId}` : ""
+        const dialogQuery = dialogId > 0 ? `&dialogId=${dialogId}` : "";
         const eventSource = new EventSource(
           `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
             text
@@ -103,12 +103,8 @@ export default function Home({}) {
       {/* Chat Messages */}
       <div className="flex-1 overflow-y-auto p-4 pb-36">
         {/* Outgoing Message */}
-        {chats.map(({ sender, content }, index) => {
-          if (sender === "user") {
-            return <OutgoingMessage key={`q-${index}`} message={content} />;
-          } else {
-            return <IncomingMessage key={`a-${index}`} message={content} />;
-          }
+        {chats.map((message, index) => {
+          return <Message key={`a-${index}`} message={message} />;
         })}
         <div ref={chatEndRef} />
       </div>
