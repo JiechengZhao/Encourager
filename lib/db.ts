@@ -22,3 +22,21 @@ export async function setSettings(data: Prisma.SettingsUpdateInput) {
 
   return updatedSettings;
 }
+
+export async function getChatMessagesOfDialog(dialog: {
+  id: number;
+  conversationId: number;
+  task: string;
+  payload: string | null;
+  status: string;
+  createdAt: Date;
+}) {
+  return await prisma.chatMessage.findMany({
+    where: {
+      subDialogId: dialog.id,
+    },
+    orderBy: {
+      id: "asc",
+    },
+  });
+}

@@ -39,6 +39,7 @@ model SubDialog {
   status         String
   createdAt      DateTime      @default(now())
   ChatMessage    ChatMessage[]
+  Task           Task[]
 }
 
 model ChatMessage {
@@ -81,4 +82,17 @@ model SimpleTalk {
   answer    String
   system    String?
   createdAt DateTime @default(now())
+}
+
+model Task {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  subDialogId Int
+  SubDialog   SubDialog @relation(fields: [subDialogId], references: [id])
+  parentId    Int?
+  parent      Task?     @relation("TaskToSubtask", fields: [parentId], references: [id])
+  subtasks    Task[]    @relation("TaskToSubtask")
+  dueDate     DateTime?
+  completed   Boolean   @default(false)
 }
