@@ -8,20 +8,23 @@ export default function Greeting() {
   const [message, setMessage] = useState("");
   const router = useRouter();
 
-  const submit = useCallback(async (message: string) => {
-    setMessage("");
-    const conversation = await createNewConversation();
-    const eventSource = new EventSource(
-      `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
-        message
-      )}`
-    );
+  const submit = useCallback(
+    async (message: string) => {
+      setMessage("");
+      const conversation = await createNewConversation();
+      const eventSource = new EventSource(
+        `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
+          message
+        )}`
+      );
 
-    eventSource.addEventListener("close", (event) => {
-      eventSource.close();
-      router.push(`/c/${conversation.id}`);
-    });
-  }, []);
+      eventSource.addEventListener("close", (event) => {
+        eventSource.close();
+        router.push(`/c/${conversation.id}`);
+      });
+    },
+    [router]
+  );
 
   return (
     <div className="flex-1 flex flex-col h-screen">

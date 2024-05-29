@@ -40,7 +40,7 @@ export default function Home({}) {
         }
       });
     }
-  }, [chatId]);
+  }, [chatId, setConversation]);
 
   // ...
   const submit = useCallback(
@@ -87,7 +87,7 @@ export default function Home({}) {
         };
       }
     },
-    [conversation, dialogId]
+    [conversation, dialogId, setConversation]
   );
 
   if (!conversation) {

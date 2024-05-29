@@ -3,6 +3,7 @@ import remarkGfm from "remark-gfm";
 import remarkBreaks from "remark-breaks";
 import { IoMdCopy } from "react-icons/io";
 import { ChatMessage } from "@prisma/client";
+import Image from "next/image";
 type Prop = { message: ChatMessage };
 
 type IconPron = { fColor: string; bgColor: string; text: string; alt: string };
@@ -13,6 +14,8 @@ function Icon({ fColor, bgColor, text, alt }: IconPron) {
         src={`https://placehold.co/200x/${bgColor}/${fColor}.svg?text=${text}`}
         alt={alt}
         className="w-8 h-8 rounded-full"
+        width={48}
+        height={48}
       />
     </div>
   );
@@ -57,7 +60,7 @@ export function Message({ message }: Prop) {
             onClick={copyToClipboard}
             className="p-1 bg-purple-300 rounded-full flex items-center justify-center self-start"
           >
-            <IoMdCopy className="text-white text-base" /> 
+            <IoMdCopy className="text-white text-base" />
           </button>
         )}
       </div>

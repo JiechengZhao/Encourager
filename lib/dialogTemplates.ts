@@ -1,4 +1,4 @@
-export default {
+const data = {
   main: {
     name: "main",
     bot: "llama3-8b-8192-basic",
@@ -15,3 +15,5 @@ Please revise:
     mode: "no-history",
   },
 };
+
+export default data;

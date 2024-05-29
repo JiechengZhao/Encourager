@@ -7,6 +7,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { useCurrentConversation } from "./CurrentConversationContext";
 import { ConversationShort } from "@/lib/types";
+import Image from "next/image";
 
 function Item({
   name,
@@ -61,7 +62,7 @@ export default function Sidebar() {
   const newConversation = useCallback(async () => {
     const conversation = await createNewConversation();
     router.push(`/c/${conversation.id}`);
-  }, []);
+  }, [router]);
 
   return (
     <div className="flex flex-col w-1/4 bg-white border-r border-gray-300 h-screen">
