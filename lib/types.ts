@@ -27,7 +27,7 @@ export type Dialog = Prisma.LLMDialogGetPayload<{
 }>;
 
 export type TaskFull = {
-  subtasks: TaskFull[];
+  subtasks: TaskFull[] | TaskFull | undefined;
   parent: TaskFull | undefined;
 } & Task;
 

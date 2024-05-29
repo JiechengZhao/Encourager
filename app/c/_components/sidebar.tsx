@@ -1,12 +1,12 @@
 "use client";
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   getLastKTouchedConversations,
   createNewConversation,
-  ConversationShort,
 } from "@/app/c/_actions/conversation";
 import { useCallback, useEffect, useState } from "react";
 import { useCurrentConversation } from "./CurrentConversationContext";
+import { ConversationShort } from "@/lib/types";
 
 function Item({
   name,
@@ -38,14 +38,6 @@ function Item({
         <p className="text-gray-600">{description}</p>
       </div>
     </div>
-  );
-}
-
-function SidebarHeader() {
-  return (
-    <header className="p-4 border-b border-gray-300 flex justify-between items-center bg-indigo-600 text-white">
-      <h1 className="text-2xl font-semibold">Chat List</h1>
-    </header>
   );
 }
 
