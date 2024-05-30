@@ -42,7 +42,7 @@ function Item({
   );
 }
 
-export default function Sidebar() {
+export default function ChatSidebar() {
   const router = useRouter();
   const { conversation } = useCurrentConversation();
   const [conversations, setConversations] = useState<ConversationShort[]>([]);

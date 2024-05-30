@@ -1,4 +1,5 @@
-import { ChatMessage } from "@prisma/client";
+import { ChatMessage, Task } from "@prisma/client";
+import { ContainId, TaskRecord } from "./types";
 
 export function extractCommandArgument(input: string, command: string): string | null {
   const parts = input.split(" ");
@@ -24,5 +25,21 @@ export function extractCommandArgument(input: string, command: string): string |
   }
 
   return res.reverse();
+}
+
+export function listToReco<T extends string | number | symbol>(
+  curr: ContainId<T>[]
+): Record<T, ContainId<T>> {
+  return curr.reduce((p, t) => {
+    return { [t.id]: t, ...p };
+  }, {});
+}
+export function getAllTasksFromSubtaskRecords(
+  subtasks: Record<number, Task[]>,
+  init: TaskRecord
+): TaskRecord {
+  return Object.entries(subtasks).reduce((prev, [_, curr]) => {
+    return { ...prev, ...listToReco(curr) };
+  }, init);
 }
 

@@ -23,13 +23,26 @@ export async function setSettings(data) {
   return updatedSettings;
 }
 
-
 async function main() {
   // Create test records
-  const setting1 = await getSettings();
-  await setSettings({systemListen: !setting1.systemListen})
-  const setting2 = await getSettings();
-  console.log(setting1.systemListen, setting2.systemListen)
+  await prisma.task.create({
+    data: {
+      name: "Task 3",
+      description: "parent task",
+      subDialogId: 2,
+      parentId: 2
+
+    },
+  });
+
+  await prisma.task.create({
+    data: {
+      name: "Task 4",
+      description: "Child task",
+      subDialogId: 2,
+      parentId: 2
+    },
+  });
 }
 
 main()

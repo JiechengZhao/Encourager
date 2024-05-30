@@ -7,14 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest --env=.env.test"
+    "pretest": "cp prisma/dev.db prisma/test.db",
+    "test": "DOTENV_CONFIG_PATH=.test.env jest --setupFiles=dotenv/config"
   },
   "dependencies": {
-    "@prisma/client": "^5.13.0",
+    "@prisma/client": "^5.14.0",
     "@prisma/extension-accelerate": "^1.0.0",
     "dotenv": "^16.4.5",
     "groq-sdk": "^0.3.3",
     "https-proxy-agent": "^7.0.4",
+    "lodash": "^4.17.21",
     "nanoid": "^5.0.7",
     "next": "14.2.3",
     "node-cache": "^5.1.2",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "@types/jest": "^29.5.12",
+    "@types/lodash": "^4.17.4",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

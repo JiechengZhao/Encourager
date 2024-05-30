@@ -26,10 +26,13 @@ export type Dialog = Prisma.LLMDialogGetPayload<{
   };
 }>;
 
-export type TaskFull = {
-  subtasks: TaskFull[] | TaskFull | undefined;
-  parent: TaskFull | undefined;
-} & Task;
+export type TaskRecord = Record<number, Task & { subtasks?: number[] }>
+
+export type TasksPack = {
+  tasks: TaskRecord;
+  root: number;
+  current: number;
+};
 
 export type QuestionAnswer = {
   question: string;
@@ -49,4 +52,7 @@ export type Bot = {
 export type Order = {
   type: string;
   content: any;
-};
+};export type ContainId<T> = {
+  id: T;
+} & any;
+

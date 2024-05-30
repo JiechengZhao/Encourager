@@ -7,8 +7,6 @@ import { truncateChatMessages } from "@/lib/tools";
 import { BaseSystemAgent } from "./baseSystemAgent";
 
 export class RenameAgent extends BaseSystemAgent {
-
-
   constructor(
     conversation: ConversationFull,
     dialog: SubDialog,
@@ -41,6 +39,10 @@ export class RenameAgent extends BaseSystemAgent {
         "/rename"
       );
       if (argument) {
+        await prisma.conversation.update({
+          where: { id: this.conversation.id },
+          data: { title: argument },
+        });
         await this.orderThencloseDialog({
           type: "rename-title",
           content: argument,
@@ -56,10 +58,15 @@ export class RenameAgent extends BaseSystemAgent {
       }
     } else {
       const instruction = await this.renameAgentRouter(this.chatMessages);
-      if (instruction?.action === "Rename the title") {
+      const title = JSON.parse(this.dialog.payload || "")?.title;
+      if (instruction?.action === "Rename the title" && title) {
+        await prisma.conversation.update({
+          where: { id: this.conversation.id },
+          data: { title: title },
+        });
         await this.orderThencloseDialog({
           type: "rename-title",
-          content: instruction?.title,
+          content: title,
         });
         return;
       } else {
@@ -120,7 +127,7 @@ If the user does not say yes, it means no. Then follow the user's instruction.
   
 Question: What should you do next? Please only give a JSON to answer this.
   {"action": "Read the conversation and suggest a title."}
-  {"action": "Rename the title", "title": ?}
+  {"action": "Rename the title"}
 `;
     const answerText = await simpleTalk("llama3-8b-8192-basic", question);
     return JSON.parse(answerText);

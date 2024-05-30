@@ -1,5 +1,5 @@
-import Sidebar from "./_components/sidebar";
-import { CurrentConversationProvider } from "./_components/CurrentConversationContext";
+import ChatSidebar from "../_components/ChatSidebar";
+import { CurrentConversationProvider } from "../_components/CurrentConversationContext";
 export default function ChartLayout({
   children,
 }: {
@@ -8,7 +8,7 @@ export default function ChartLayout({
   return (
     <CurrentConversationProvider>
       <div className="flex h-screen overflow-hidden">
-        <Sidebar />
+        <ChatSidebar />
         {children}
       </div>
     </CurrentConversationProvider>
