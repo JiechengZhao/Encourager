@@ -1,28 +1,21 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
-import { TaskRecord } from "@/lib/types";
-import { getSubtasks, getTask } from "@/app/t/taskAction";
+import React, { useCallback } from "react";
+import { getSubtasks } from "@/app/t/taskAction";
 import { useTaskRecord } from "./TaskRecordContext";
 import { getAllTasksFromSubtaskRecords } from "@/lib/tools";
-
+import { useRouter } from "next/navigation";
 
 const TaskMain = () => {
-  const {
-    taskRecord,
-    setTaskRecord,
-    rootTaskId,
-    setRootTaskId,
-    setExpandRecord,
-    setCurrentTaskId,
-  } = useTaskRecord();
-
+  const { taskRecord, rootTaskId } = useTaskRecord();
 
   if (!taskRecord) {
     return "loading";
   }
   return (
-    <div className="task-tree">
-      <TaskNode key={rootTaskId} taskId={rootTaskId} />
+    <div className="flex flex-col w-1/4 bg-white border-r border-gray-300 h-screen">
+      <div className="flex-grow overflow-y-auto p-3 mb-1 pb-10">
+        <TaskNode key={rootTaskId} taskId={rootTaskId} />
+      </div>
     </div>
   );
 };
@@ -37,8 +30,8 @@ const TaskNode = ({ taskId }: { taskId: number }) => {
     currentTaskId,
   } = useTaskRecord();
   const isExpanded = expandRecord.has(taskId);
-  console.log(taskId);
   const task = taskRecord ? taskRecord[taskId] : undefined;
+  const router = useRouter();
 
   const toggleExpand = useCallback(async () => {
     if (isExpanded) {
@@ -46,17 +39,21 @@ const TaskNode = ({ taskId }: { taskId: number }) => {
     } else {
       if (task && !task.subtasks) {
         const subtasks = await getSubtasks(task.id, 2);
+        console.log(subtasks);
         const tasks = getAllTasksFromSubtaskRecords(subtasks, {});
         task.subtasks = subtasks[task.id].map((t) => t.id);
         const NewTaskRecord = { ...taskRecord, ...tasks };
-        for (const id in Object.keys(subtasks)) {
+        console.log(subtasks);
+        for (const id_ of Object.keys(subtasks)) {
+          const id = Number(id_);
+          console.log(id)
           NewTaskRecord[id].subtasks = subtasks[id].map((t) => t.id);
         }
         setTaskRecord(NewTaskRecord);
       }
       addExpandRecord(taskId);
     }
-  }, [task, isExpanded]);
+  }, [task, isExpanded, addExpandRecord, deleteExpandRecord, setTaskRecord, taskId, taskRecord]);
 
   if (!task) {
     return `error load task ${taskId}`;
@@ -79,6 +76,9 @@ const TaskNode = ({ taskId }: { taskId: number }) => {
             <button className="w-6 mr-2 select-none">•</button>
           )}
           <span
+            onClick={(e) => {
+              router.push(`/t/${taskId}`, { scroll: false });
+            }}
             className={`text-gray-800 px-1 font-medium ${
               isCurrentTask ? "bg-yellow-100" : ""
             }`}

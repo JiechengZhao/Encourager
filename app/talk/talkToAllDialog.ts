@@ -1,4 +1,4 @@
-import { dialogTalk } from "../../../lib/llm";
+import { dialogTalk } from "../../lib/llm";
 import { system } from "./system";
 import { ChatMessage } from "@prisma/client";
 import {
@@ -6,7 +6,7 @@ import {
   Order
 } from "@/lib/types";
 import { getSettings, prisma } from "@/lib/db";
-import { getFullConversation } from "../_actions/conversation";
+import { getFullConversation } from "../c/_actions/conversation";
 
 function talkToAllDialog(
   conversation: ConversationFull,

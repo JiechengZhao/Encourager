@@ -32,7 +32,7 @@ export default function ChatInputBox({
         setMessage("");
       }
     },
-    [message]
+    [message, submit]
   );
 
   return (

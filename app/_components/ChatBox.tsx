@@ -43,7 +43,7 @@ export default function ChatBox({ chatId }: { chatId: number }) {
       if (conversation) {
         const dialogQuery = dialogId > 0 ? `&dialogId=${dialogId}` : "";
         const eventSource = new EventSource(
-          `/c/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
+          `/talk?conversationId=${conversation.id}&text=${encodeURIComponent(
             text
           )}${dialogQuery}`
         );

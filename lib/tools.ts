@@ -1,13 +1,17 @@
 import { ChatMessage, Task } from "@prisma/client";
 import { ContainId, TaskRecord } from "./types";
 
-export function extractCommandArgument(input: string, command: string): string | null {
+export function extractCommandArgument(
+  input: string,
+  command: string
+): string | null {
   const parts = input.split(" ");
   if (parts.length > 1 && parts[0] === command) {
     return parts.slice(1).join(" "); // Join the remaining parts to get the full argument
   }
   return null;
-}export function truncateChatMessages(
+}
+export function truncateChatMessages(
   messages: ChatMessage[],
   limit: number
 ): string[] {

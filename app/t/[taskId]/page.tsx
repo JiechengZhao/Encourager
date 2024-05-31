@@ -30,20 +30,39 @@ export default function Home({}) {
 
   useEffect(() => {
     const taskId_ = Number(taskId);
-    const loadTask = async () => {
-      if (taskId_) {
+    if (taskId_) {
+      const loadTask = async () => {
         const task = await getTask(taskId_, 3);
-        setTaskRecord(task.tasks);
+        setTaskRecord((tasks) => {
+          if (!tasks) {
+            return task.tasks;
+          }
+          for (const id_ of Object.keys(task.tasks)) {
+            const id = Number(id_);
+            if (!task.tasks[id].subtasks && tasks[id] && tasks[id].subtasks) {
+              task.tasks[id].subtasks = tasks[id].subtasks;
+            }
+          }
+          const res = { ...tasks, ...task.tasks };
+          return res;
+        });
         setRootTaskId(task.root);
         setCurrentTaskId(task.current);
-        setExpandRecord(findParents(task.tasks, taskId_).add(taskId_));
-      }
-    };
+        setExpandRecord(
+          (expand) =>
+            new Set([
+              ...Array.from(expand),
+              ...Array.from(findParents(task.tasks, taskId_)),
+              taskId_,
+            ])
+        );
+      };
+      loadTask();
+    }
+  }, [taskId, setCurrentTaskId, setExpandRecord, setRootTaskId, setTaskRecord]);
 
-    loadTask();
-  }, [taskId]);
   if (taskRecord && taskRecord[currentTaskId]) {
     const task = taskRecord[currentTaskId];
-    return <ChatBox chatId={task.conversationId||1} />;
+    return <ChatBox chatId={task.conversationId || 1} />;
   }
 }
