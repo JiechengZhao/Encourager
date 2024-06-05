@@ -1,11 +1,8 @@
 import { dialogTalk } from "../../lib/llm";
 import { system } from "./system";
 import { ChatMessage } from "@prisma/client";
-import {
-  ConversationFull,
-  Order
-} from "@/lib/types";
-import { getSettings, prisma } from "@/lib/db";
+import { ConversationFull, Order } from "@/lib/types";
+import { prisma } from "@/lib/db";
 import { getFullConversation } from "../c/_actions/conversation";
 
 function talkToAllDialog(
@@ -15,19 +12,20 @@ function talkToAllDialog(
 ) {
   return conversation.dialogs
     .filter((dialog) => !dialog.mode.includes("inactive"))
-    .map((dialog) => dialogTalk(text, dialog.id)
-      .then((answer) => {
-        return prisma.chatMessage.create({
-          data: {
-            sender: dialog.name,
-            content: answer,
-            conversationId: conversation.id,
-          },
-        });
-      })
-      .then((chat) => {
-        messageCallback(chat);
-      })
+    .map((dialog) =>
+      dialogTalk(text, dialog.id)
+        .then((answer) => {
+          return prisma.chatMessage.create({
+            data: {
+              sender: dialog.name,
+              content: answer,
+              conversationId: conversation.id,
+            },
+          });
+        })
+        .then((chat) => {
+          messageCallback(chat);
+        })
     );
 }
 
@@ -60,8 +58,6 @@ export async function talk(
         orderCallback
       );
     } else {
-      const settings = await getSettings();
-
       await Promise.allSettled([
         ...talkToAllDialog(conversation, text, messageCallback),
       ]);

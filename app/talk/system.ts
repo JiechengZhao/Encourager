@@ -5,6 +5,7 @@ import { ChatMessage, SubDialog } from "@prisma/client";
 import { RenameAgent } from "./rename";
 import { AddAgentAgent } from "./addAgent";
 import { BaseSystemAgent } from "./baseSystemAgent";
+import { TaskManager } from "./taskManager";
 
 function normalizeString(str: string) {
   return str.replace(/^"|"$/g, "");
@@ -47,6 +48,7 @@ const nameToAgentClass: Record<
 > = {
   rename: RenameAgent,
   "add-agent": AddAgentAgent,
+  task: TaskManager,
 };
 
 async function systemAction(
@@ -93,6 +95,8 @@ export async function system(
       dialog = await newDialog(conversation, "rename", chat, orderCallback);
     } else if (chat.content.startsWith("/add-agent")) {
       dialog = await newDialog(conversation, "add-agent", chat, orderCallback);
+    } else if (chat.content.startsWith("/task")) {
+      dialog = await newDialog(conversation, "task", chat, orderCallback);
     }
     if (!dialog) {
       return;

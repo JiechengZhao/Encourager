@@ -1,5 +1,6 @@
 import { ChatMessage, Task } from "@prisma/client";
-import { ContainId, TaskRecord } from "./types";
+import { ContainId, TaskAIResponse, TaskRecord } from "./types";
+import {WError} from "verror";
 
 export function extractCommandArgument(
   input: string,
@@ -47,3 +48,17 @@ export function getAllTasksFromSubtaskRecords(
   }, init);
 }
 
+export function extractJson(response: string): any {
+  const jsonPattern = /({[^]*}|\[[^]*\])\s*$/;
+  const match = response.match(jsonPattern);
+
+  if (match) {
+    try {
+      return JSON.parse(match[0]);
+    } catch (error) {
+      throw new WError("Failed to parse JSON:", error);
+    }
+  } else {
+    throw new Error("No JSON found in the response");
+  }
+}

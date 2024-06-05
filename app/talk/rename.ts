@@ -2,7 +2,7 @@ import { ConversationFull, Order } from "@/lib/types";
 import { simpleTalk } from "@/lib/llm";
 import { prisma } from "@/lib/db";
 import { SubDialog, ChatMessage } from "@prisma/client";
-import { extractCommandArgument } from "@/lib/tools";
+import { extractCommandArgument, extractJson } from "@/lib/tools";
 import { truncateChatMessages } from "@/lib/tools";
 import { BaseSystemAgent } from "./baseSystemAgent";
 
@@ -112,7 +112,7 @@ Question: What is a good title for this conversation? Please give a JSON only an
   {"title":?}
 `;
     const answerText = await simpleTalk("llama3-8b-8192-basic", question);
-    return JSON.parse(answerText);
+    return extractJson(answerText);
   }
 
   private async renameAgentRouter(chatMessages: ChatMessage[]) {
@@ -130,6 +130,6 @@ Question: What should you do next? Please only give a JSON to answer this.
   {"action": "Rename the title"}
 `;
     const answerText = await simpleTalk("llama3-8b-8192-basic", question);
-    return JSON.parse(answerText);
+    return extractJson(answerText);
   }
 }

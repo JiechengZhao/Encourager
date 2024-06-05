@@ -25,10 +25,10 @@ model Conversation {
   description  String?
   chatMessages ChatMessage[]
   dialogs      LLMDialog[]
-  createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   SubDialog    SubDialog[]
   Task         Task[]
+  createdAt    DateTime      @default(now())
 }
 
 model SubDialog {
@@ -38,9 +38,9 @@ model SubDialog {
   task           String
   payload        String?
   status         String
-  createdAt      DateTime      @default(now())
   ChatMessage    ChatMessage[]
   Task           Task[]
+  createdAt      DateTime      @default(now())
 }
 
 model ChatMessage {
@@ -63,8 +63,8 @@ model LLMDialog {
   mode           String           @default("use history")
   conversationId Int
   conversation   Conversation     @relation(fields: [conversationId], references: [id])
-  createdAt      DateTime         @default(now())
   questionAnswer QuestionAnswer[]
+  createdAt      DateTime         @default(now())
 }
 
 model QuestionAnswer {
@@ -86,17 +86,36 @@ model SimpleTalk {
 }
 
 model Task {
-  id             Int           @id @default(autoincrement())
+  id             Int              @id @default(autoincrement())
   name           String
   description    String?
   subDialogId    Int
-  SubDialog      SubDialog     @relation(fields: [subDialogId], references: [id])
+  SubDialog      SubDialog        @relation(fields: [subDialogId], references: [id])
   parentId       Int?
-  parent         Task?         @relation("TaskToSubtask", fields: [parentId], references: [id])
-  subtasks       Task[]        @relation("TaskToSubtask")
-  priority       Int           @default(3)
+  parent         Task?            @relation("TaskToSubtask", fields: [parentId], references: [id])
+  subtasks       Task[]           @relation("TaskToSubtask")
+  priority       Int              @default(3)
+  timeEstimate   Float?
   dueDate        DateTime?
   conversationId Int?
-  conversation   Conversation? @relation(fields: [conversationId], references: [id])
-  completed      Boolean       @default(false)
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id])
+  status         String           @default("Not Started")
+  tags           String           @default("[]")
+  dependencies   TaskDependency[] @relation("DependentTasks")
+  dependents     TaskDependency[] @relation("TaskDependents")
+  createdAt      DateTime         @default(now())
+
+  @@index([parentId])
+}
+
+model TaskDependency {
+  taskId      Int
+  dependentId Int
+  task        Task     @relation("TaskDependents", fields: [taskId], references: [id])
+  dependent   Task     @relation("DependentTasks", fields: [dependentId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@id(name: "taskDependencyId", [taskId, dependentId])
+  @@index([taskId])
+  @@index([dependentId])
 }

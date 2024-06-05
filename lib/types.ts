@@ -26,7 +26,7 @@ export type Dialog = Prisma.LLMDialogGetPayload<{
   };
 }>;
 
-export type TaskRecord = Record<number, Task & { subtasks?: number[] }>
+export type TaskRecord = Record<number, Task & { subtasks?: number[] }>;
 
 export type TasksPack = {
   tasks: TaskRecord;
@@ -52,7 +52,20 @@ export type Bot = {
 export type Order = {
   type: string;
   content: any;
-};export type ContainId<T> = {
+};
+export type ContainId<T> = {
   id: T;
 } & any;
 
+export type AIMessage = {
+  role: string;
+  content: string;
+};
+
+export type TaskAIResponse = {
+  id: string;
+  name: string;
+  estimate_time: string;
+  parentId: string;
+  dependency: string[];
+};

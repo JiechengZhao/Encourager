@@ -1,8 +1,8 @@
-import { ConversationFull, Order } from "@/lib/types";
+import { ConversationFull, Order, TaskAIResponse } from "@/lib/types";
 import { simpleTalk } from "@/lib/llm";
 import { prisma, getChatMessagesOfDialog } from "@/lib/db";
 import { SubDialog, ChatMessage } from "@prisma/client";
-import { extractCommandArgument } from "@/lib/tools";
+import { extractCommandArgument, extractJson } from "@/lib/tools";
 import { truncateChatMessages } from "@/lib/tools";
 import { BaseSystemAgent } from "./baseSystemAgent";
 
@@ -29,28 +29,19 @@ export class TaskManager extends BaseSystemAgent {
       if (argument) {
         return;
       } else {
-        const title = await this.suggestTitle();
-        await this.message(
-          `The conversation will be renamed to "${title.title}", is that OK? Answer Yes or No, if no please give a hint or suggest another name.`
-        );
+        const tasks = await this.suggestTask();
+        await this.message(tasksToMarkdown(tasks));
         return;
       }
     } else {
-      const instruction = await this.renameAgentRouter(this.chatMessages);
-      if (instruction?.action === "Rename the title") {
+      const tasks = await this.continueTalk();
+      await this.message(tasks);
+      return;
 
-        return;
-      } else {
-        const title = await this.suggestTitle(this.chatMessages);
-        await this.message(
-          `The conversation will be renamed to "${title.title}", is that OK? Answer Yes or No, if no please give a hint or suggest another name.`
-        );
-        return;
-      }
     }
   }
 
-  private async suggestTitle(dialogMessages?: ChatMessage[]) {
+  private async suggestTask(useDialog: boolean = true) {
     const chat = truncateChatMessages(
       this.conversation.chatMessages.filter(
         (value) =>
@@ -61,8 +52,10 @@ export class TaskManager extends BaseSystemAgent {
     ).join("\n");
 
     let dialog = "";
-    if (dialogMessages) {
-      const dialogText = truncateChatMessages(dialogMessages, 1000).join("\n");
+    if (useDialog) {
+      const dialogText = truncateChatMessages(this.chatMessages, 1000).join(
+        "\n"
+      );
       dialog = `Here is your dialog with user.
 ------DIALOG BEGIN------
 ${dialogText}
@@ -71,36 +64,83 @@ ${dialogText}
 `;
     }
 
-    const question = `You are a conversation manager agent. The user wants to rename the title of a conversation. 
+    const question = `You are a conversation manager agent. The user wants to make a TODO list from the conversation. 
 
-${dialog}
 Here is user's conversation.
 ------CONVERSATION BEGIN------
 ${chat}
 ------CONVERSATION END------
 
-Question: What is a good title for this conversation? Please give a JSON only answer, do not add other content.
-  {"title":?}
+${dialog}
+Find the most top task in the conversation and also give its subtasks.
+
+Make a TODO list for user. Return it in JSON and. give the JSON only. Here is the format:
+[{
+"id" : someid
+"name": "taskName",
+"estimate_time": "?-?",
+"parentId" : parent-task-id
+"dependency": [dependency-task-ids]
+}, ...]
+
 `;
     const answerText = await simpleTalk("llama3-8b-8192-basic", question);
-    return JSON.parse(answerText);
+    return extractJson(answerText) as TaskAIResponse[];
   }
 
-  private async renameAgentRouter(chatMessages: ChatMessage[]) {
-    const messages = truncateChatMessages(chatMessages, 10000).join("\n");
-    const question = `You are a conversation manager agent. The user wants to rename the title of a conversation. You cannot see the conversation yet. Here is the dialog with the user and you:
+  private async continueTalk(useDialog: boolean = true) {
+    const chat = truncateChatMessages(
+      this.conversation.chatMessages.filter(
+        (value) =>
+          (value.sender === "main" || value.sender === "user") &&
+          !value.subDialogId
+      ),
+      10000
+    ).join("\n");
 
+    let dialog = "";
+    if (useDialog) {
+      const dialogText = truncateChatMessages(this.chatMessages, 1000).join(
+        "\n"
+      );
+      dialog = `Here is your dialog with user.
 ------DIALOG BEGIN------
-${messages}
-------DIALOG END------
-  
-If the user does not say yes, it means no. Then follow the user's instruction.
-  
-Question: What should you do next? Please only give a JSON to answer this.
-  {"action": "Read the conversation and suggest a title."}
-  {"action": "Rename the title", "title": ?}
+${dialogText}
+------DIALOG BEGIN------
+
+`;
+    }
+
+    const question = `You are a conversation manager agent. The user wants to make a TODO list from the conversation. 
+
+Here is user's conversation.
+------CONVERSATION BEGIN------
+${chat}
+------CONVERSATION END------
+
+${dialog}
+Answer user's last question.
 `;
     const answerText = await simpleTalk("llama3-8b-8192-basic", question);
-    return JSON.parse(answerText);
+    return answerText;
   }
+}
+
+function tasksToMarkdown(tasks: TaskAIResponse[]): string {
+  let markdown = "# Task List\n\n";
+
+  tasks.forEach((task) => {
+    markdown += `## Task ${task.id}: ${task.name}\n`;
+    markdown += `**Estimate Time:** ${task.estimate_time}\n`;
+    if (task.parentId) {
+      markdown += `**Parent ID:** ${task.parentId}\n`;
+    }
+    if (task.dependency && task.dependency.length > 0) {
+      markdown += `**Dependencies:** ${
+        task.dependency.length > 0 ? task.dependency.join(", ") : "None"
+      }\n\n`;
+    }
+  });
+
+  return markdown;
 }
