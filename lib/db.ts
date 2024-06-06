@@ -8,7 +8,7 @@ export async function getSettings(): Promise<Prisma.SettingsGetPayload<{}>> {
     cacheStrategy: { swr: 60, ttl: 60 },
   });
   if (!settings) {
-    throw Error("No system settings. Please init the system first.");
+    throw new Error("No system settings. Please init the system first.");
   }
   return settings;
 }

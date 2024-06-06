@@ -1,16 +1,14 @@
-import { Task } from "@prisma/client";
-import { TasksPack, TaskRecord } from "./types";
+import { Task, Prisma } from "@prisma/client";
+import { TasksPack, TaskRecord, TasksPackP } from "./types";
 import { listToReco } from "./tools";
 import { getAllTasksFromSubtaskRecords } from "./tools";
 import { prisma } from "./db";
 import { Set } from "immutable";
-import { VError } from "verror";
 
 export async function getParents(
   taskId: number,
-  visited: Set<number> = Set(),
-  containSubtasks: boolean = true
-): Promise<TasksPack> {
+  visited: Set<number> = Set()
+): Promise<TasksPackP> {
   if (visited.has(taskId)) {
     throw new Error("Circular reference detected.");
   }
@@ -30,7 +28,7 @@ export async function getParents(
     };
 
     if (task.parentId) {
-      const parent = await getParents(task.parentId, visited, containSubtasks);
+      const parent = await getParents(task.parentId, visited);
       return {
         tasks: { ...parent.tasks, ...tasks },
         current: task.id,
@@ -73,7 +71,7 @@ export async function getSubtasks(
 
 export async function getTask(
   taskId: number,
-  generation: number
+  generation?: number
 ): Promise<TasksPack> {
   const task = await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -89,7 +87,7 @@ export async function getTask(
       tasks[id] = { ...tasks[id], subtasks: subtasks[id].map((t) => t.id) };
     }
     if (task.parentId) {
-      const parent = await getParents(task?.parentId);
+      const parent = await getParents(task.parentId);
       return {
         tasks: { ...parent.tasks, ...tasks },
         root: parent.root,
@@ -103,7 +101,7 @@ export async function getTask(
       };
     }
   } else {
-    throw Error(`can not find the task id: ${taskId}`);
+    throw new Error(`can not find the task id: ${taskId}`);
   }
 }
 
@@ -151,7 +149,7 @@ export async function liftTask(taskId: number) {
       }),
     ]);
   } else {
-    throw Error("Can not lift the task, Already the top level.");
+    throw new Error("Can not lift the task, Already the top level.");
   }
 }
 
@@ -171,7 +169,7 @@ export async function lowerTask(taskId: number, newParentId: number) {
     (!task && newParent) ||
     (task && !newParent)
   ) {
-    throw Error(
+    throw new Error(
       "invalid lower the new parent must be the sister task of the current task"
     );
   }
@@ -234,7 +232,11 @@ export async function shiftTaskStatus(taskId: number, newStatus: string) {
   }
 }
 
-export async function setTimeEstimate(taskId: number, timeEstimate: number) {
+export async function setTimeEstimate(
+  taskId: number,
+  timeEstimate: number,
+  autoExpand: boolean = false
+) {
   const task = await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
     where: {
@@ -247,23 +249,87 @@ export async function setTimeEstimate(taskId: number, timeEstimate: number) {
 
   if (task) {
     if (task.timeEstimate && task.timeEstimate > timeEstimate) {
-      const subTasks = await getSubtasks(taskId);
-      const subTasksTime = subTasks[taskId]
+      const subTasksTime = task.subtasks
         .map((t) => t.timeEstimate)
         .reduce<number>((prev, curr) => prev + (curr || 0), 0);
       if (subTasksTime > timeEstimate) {
-        throw Error("")
+        if (autoExpand) {
+          timeEstimate = subTasksTime;
+        } else {
+          throw new Error(
+            "The estimated time for the new task is smaller than the sum of the estimated times for all its subtasks. Please review and adjust the estimated times accordingly."
+          );
+        }
       }
-    }
 
-    return await prisma.task.update({
-      where: {
-        id: taskId,
-      },
-      data: {
-        timeEstimate,
-      },
-    });
+      return await prisma.task.update({
+        where: {
+          id: taskId,
+        },
+        data: {
+          timeEstimate,
+        },
+      });
+    } else if (task.parentId) {
+      const update = [];
+      const { tasks } = await getParents(task.parentId);
+      let currentTaskId = task.parentId;
+      tasks[taskId].timeEstimate = timeEstimate;
+      while (currentTaskId) {
+        const currentTask = tasks[currentTaskId];
+        const subTaskTime = currentTask.subtasks
+          .map((id) => tasks[id].timeEstimate)
+          .reduce<number>((prev, curr) => prev + (curr || 0), 0);
+        if (
+          !currentTask.timeEstimate ||
+          subTaskTime > currentTask.timeEstimate
+        ) {
+          if (autoExpand) {
+            currentTask.timeEstimate = subTaskTime;
+            update.push({
+              where: {
+                id: currentTask.id,
+              },
+              data: {
+                timeEstimate: currentTask.timeEstimate,
+              },
+            });
+          } else {
+            throw new Error(
+              "Sum of the estimated time for the new task and its sisters exceeds the estimated times of its parent. Please review and adjust the estimated times accordingly."
+            );
+          }
+        } else {
+          break;
+        }
+        if (currentTask.parentId) {
+          currentTaskId = currentTask.parentId;
+        } else {
+          break;
+        }
+      }
+      const res = await prisma.$transaction([
+        prisma.task.update({
+          where: {
+            id: taskId,
+          },
+          data: {
+            timeEstimate,
+          },
+        }),
+        prisma.task.updateMany({ data: update }),
+      ]);
+      return res[0];
+    } else {
+      return await prisma.task.update({
+        where: {
+          id: taskId,
+        },
+        data: {
+          timeEstimate,
+        },
+      });
+    }
   } else {
     throw new Error(`Failed to find the task, Id: ${taskId}.`);
   }
@@ -293,7 +359,7 @@ export async function getDependencyClosure(taskIds: number[]) {
 export async function addDependency(taskId: number, depencencyIds: number[]) {
   const depencenciesClosure = await getDependencyClosure(depencencyIds);
   if ([...depencenciesClosure, ...depencencyIds].includes(taskId)) {
-    throw Error("Cannot set dependency: introducing circular dependency.");
+    throw new Error("Cannot set dependency: introducing circular dependency.");
   }
   const tasks = await prisma.task.findMany({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -307,7 +373,7 @@ export async function addDependency(taskId: number, depencencyIds: number[]) {
   const task = tasks.find((t) => t.id === taskId);
   const depencencies = tasks.filter((t) => depencencyIds.includes(t.id));
   if (!task) {
-    throw Error(`Can not find task ${taskId}`);
+    throw new Error(`Can not find task ${taskId}`);
   }
   if (depencencies.length !== depencencyIds.length) {
     throw new Error("can not find all depencencies.");

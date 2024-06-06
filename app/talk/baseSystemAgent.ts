@@ -47,6 +47,6 @@ export class BaseSystemAgent {
     this.chatMessages = await getChatMessagesOfDialog(this.dialog);
   }
   async act() {
-    throw Error("function not implemented")
+    throw new Error("function not implemented")
   }
 }

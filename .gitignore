@@ -19,6 +19,7 @@
 # misc
 .DS_Store
 *.pem
+.other
 
 # debug
 npm-debug.log*
@@ -41,3 +42,4 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/test.db
 .test.env
+

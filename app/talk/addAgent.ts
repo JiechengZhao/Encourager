@@ -30,7 +30,7 @@ export class AddAgentAgent extends BaseSystemAgent {
 
   async act() {
     if (this.chatMessages.length === 0) {
-      throw Error("Should be at least one message in dialog.");
+      throw new Error("Should be at least one message in dialog.");
     }
 
     if (this.chatMessages.length === 1) {

@@ -34,6 +34,14 @@ export type TasksPack = {
   current: number;
 };
 
+export type TaskRecordP = Record<number, Task & { subtasks: number[] }>;
+
+export type TasksPackP = {
+  tasks: TaskRecordP;
+  root: number;
+  current: number;
+};
+
 export type QuestionAnswer = {
   question: string;
   answer: string;

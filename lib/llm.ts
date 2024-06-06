@@ -146,14 +146,14 @@ export async function simpleTalk(
     });
     return answer
   } else {
-    throw Error("No such bot");
+    throw new Error("No such bot");
   }
 }
 
 export async function dialogTalk(text: string, dialogId: number) {
   const dialog = await getDialogWithLastKQA(dialogId, 1000);
   if (!dialog) {
-    throw Error("Error: Invalid dialog Id");
+    throw new Error("Error: Invalid dialog Id");
   }
   if (dialog.template) {
     text = sprintf(dialog.template, text);
@@ -174,7 +174,7 @@ export async function dialogTalk(text: string, dialogId: number) {
         await saveQuestionAndAnswer(dialogId, text, answer);
         return answer;
       } else {
-        throw Error("No answer");
+        throw new Error("No answer");
       }
     } catch (error) {
       if (error instanceof BadRequestError) {
@@ -185,7 +185,7 @@ export async function dialogTalk(text: string, dialogId: number) {
           errDetails.error.code === "context_length_exceeded"
         ) {
           if (messages.length <= 2) {
-            throw error;
+            throw new Error;
           }
           console.error(
             "Enconter context_length_exceeded, adjust truncate setting and retry."
@@ -199,8 +199,8 @@ export async function dialogTalk(text: string, dialogId: number) {
           continue;
         }
       }
-      throw error;
+      throw new Error;
     }
   }
-  throw Error("Error: Maximum retry attempts exceeded for calling llm.");
+  throw new Error("Error: Maximum retry attempts exceeded for calling llm.");
 }

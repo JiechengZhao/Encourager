@@ -88,7 +88,7 @@ export async function system(
       },
     });
     if (!dialog) {
-      throw Error("Unknown Dialog Id");
+      throw new Error("Unknown Dialog Id");
     }
   } else {
     if (chat.content.startsWith("/rename")) {
