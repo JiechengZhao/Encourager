@@ -5,7 +5,7 @@ import { getAllTasksFromSubtaskRecords } from "./tools";
 import { prisma } from "./db";
 import { Set } from "immutable";
 
-export async function getParents(
+export async function getParentsAndSelf(
   taskId: number,
   visited: Set<number> = Set()
 ): Promise<TasksPackP> {
@@ -28,7 +28,7 @@ export async function getParents(
     };
 
     if (task.parentId) {
-      const parent = await getParents(task.parentId, visited);
+      const parent = await getParentsAndSelf(task.parentId, visited);
       return {
         tasks: { ...parent.tasks, ...tasks },
         current: task.id,
@@ -69,7 +69,14 @@ export async function getSubtasks(
   return { ...more, [taskId]: subtasks };
 }
 
-export async function getTask(
+export async function getTask(taskId: number) {
+  return await prisma.task.findUnique({
+    cacheStrategy: { swr: 60, ttl: 60 },
+    where: { id: taskId },
+  });
+}
+
+export async function getFullTask(
   taskId: number,
   generation?: number
 ): Promise<TasksPack> {
@@ -87,7 +94,7 @@ export async function getTask(
       tasks[id] = { ...tasks[id], subtasks: subtasks[id].map((t) => t.id) };
     }
     if (task.parentId) {
-      const parent = await getParents(task.parentId);
+      const parent = await getParentsAndSelf(task.parentId);
       return {
         tasks: { ...parent.tasks, ...tasks },
         root: parent.root,
@@ -232,10 +239,123 @@ export async function shiftTaskStatus(taskId: number, newStatus: string) {
   }
 }
 
+export async function getDependencyClosure(taskIds: number[]) {
+  let taskIdsSet = Set<number>();
+  let toSearch = Set(taskIds);
+
+  while (!toSearch.isEmpty()) {
+    const dependencyIds = (
+      await prisma.taskDependency.findMany({
+        cacheStrategy: { swr: 60, ttl: 60 },
+        where: {
+          dependentId: {
+            in: [...toSearch],
+          },
+        },
+      })
+    ).map((t) => t.taskId);
+    toSearch = Set(dependencyIds).subtract(taskIdsSet);
+    taskIdsSet = taskIdsSet.union(dependencyIds);
+  }
+  return [...taskIdsSet];
+}
+
+export async function getDependent(taskIds: number[]) {
+  const dependentIds = await prisma.taskDependency.findMany({
+    cacheStrategy: { swr: 60, ttl: 60 },
+    where: {
+      taskId: {
+        in: taskIds,
+      },
+    },
+  });
+  return dependentIds.map((t) => t.dependentId);
+}
+
+export async function addDependency(taskId: number, depencencyIds: number[]) {
+  const tasks = await prisma.task.findMany({
+    cacheStrategy: { swr: 60, ttl: 60 },
+    where: {
+      id: {
+        in: [taskId, ...depencencyIds],
+      },
+    },
+  });
+
+  const task = tasks.find((t) => t.id === taskId);
+  const depencencies = tasks.filter((t) => depencencyIds.includes(t.id));
+  if (!task) {
+    throw new Error(`Can not find task ${taskId}`);
+  }
+  if (depencencies.length !== depencencyIds.length) {
+    throw new Error("can not find all depencencies.");
+  }
+  if (
+    (task.parentId &&
+      depencencies
+        .map((t) => t.parentId === task.parentId)
+        .reduce((prev, curr) => prev && curr)) ||
+    (!task.parentId &&
+      depencencies.map((t) => !t.parentId).reduce((prev, curr) => prev && curr))
+  ) {
+    const depencenciesClosure = await getDependencyClosure(depencencyIds);
+    if ([...depencenciesClosure, ...depencencyIds].includes(taskId)) {
+      throw new Error(
+        "Cannot set dependency: introducing circular dependency."
+      );
+    }
+    //TODO if postgresql can use duplicate parameter
+    const alreadyHas = (
+      await prisma.taskDependency.findMany({
+        where: {
+          dependentId: taskId,
+        },
+      })
+    ).map((r) => r.taskId);
+    const newDepencencyIds = Set(depencencyIds).subtract(alreadyHas).toArray();
+    await prisma.taskDependency.createMany({
+      data: newDepencencyIds.map((id) => {
+        return {
+          taskId: id,
+          dependentId: taskId,
+        };
+      }),
+    });
+  } else {
+    throw new Error("Cannot set dependency: do not share same parent.");
+  }
+}
+
+export async function removeDependency(
+  taskId?: number,
+  depencencyIds?: number[]
+) {
+  const where: {
+    dependentId?: number;
+    taskId?: {
+      in: number[];
+    };
+  } = {};
+  if (!taskId && !depencencyIds) {
+    throw new Error("must specify taskId or depencencyIds");
+  }
+  if (taskId) {
+    where.dependentId = taskId;
+  }
+  if (depencencyIds) {
+    where.taskId = {
+      in: depencencyIds,
+    };
+  }
+  await prisma.taskDependency.deleteMany({
+    where,
+  });
+}
+
 export async function setTimeEstimate(
   taskId: number,
   timeEstimate: number,
-  autoExpand: boolean = false
+  autoExpand: boolean = true
 ) {
   const task = await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -250,16 +370,13 @@ export async function setTimeEstimate(
   if (task) {
     if (task.timeEstimate && task.timeEstimate > timeEstimate) {
       const subTasksTime = task.subtasks
+        .filter(activeTasks)
         .map((t) => t.timeEstimate)
         .reduce<number>((prev, curr) => prev + (curr || 0), 0);
       if (subTasksTime > timeEstimate) {
-        if (autoExpand) {
-          timeEstimate = subTasksTime;
-        } else {
-          throw new Error(
-            "The estimated time for the new task is smaller than the sum of the estimated times for all its subtasks. Please review and adjust the estimated times accordingly."
-          );
-        }
+        throw new Error(
+          "The estimated time for the new task is smaller than the sum of the estimated times for all its subtasks. Please review and adjust the estimated times accordingly."
+        );
       }
 
       return await prisma.task.update({
@@ -272,12 +389,13 @@ export async function setTimeEstimate(
       });
     } else if (task.parentId) {
       const update = [];
-      const { tasks } = await getParents(task.parentId);
+      const { tasks } = await getParentsAndSelf(task.parentId);
       let currentTaskId = task.parentId;
       tasks[taskId].timeEstimate = timeEstimate;
       while (currentTaskId) {
         const currentTask = tasks[currentTaskId];
         const subTaskTime = currentTask.subtasks
+          .filter((id) => activeTasks(tasks[id]))
           .map((id) => tasks[id].timeEstimate)
           .reduce<number>((prev, curr) => prev + (curr || 0), 0);
         if (
@@ -308,17 +426,21 @@ export async function setTimeEstimate(
           break;
         }
       }
-      const res = await prisma.$transaction([
-        prisma.task.update({
-          where: {
-            id: taskId,
-          },
-          data: {
-            timeEstimate,
-          },
-        }),
-        prisma.task.updateMany({ data: update }),
-      ]);
+      const promises = update.reduce(
+        (prev, curr) => [...prev, prisma.task.update(curr)],
+        [
+          prisma.task.update({
+            where: {
+              id: taskId,
+            },
+            data: {
+              timeEstimate,
+            },
+          }),
+        ]
+      );
+
+      const res = await prisma.$transaction(promises);
       return res[0];
     } else {
       return await prisma.task.update({
@@ -333,74 +455,59 @@ export async function setTimeEstimate(
   } else {
     throw new Error(`Failed to find the task, Id: ${taskId}.`);
   }
+
+  function activeTasks(t: Task) {
+    return t.status !== "Done" && t.status !== "Canceled";
+  }
 }
 
-export async function getDependencyClosure(taskIds: number[]) {
-  let taskIdsSet = Set<number>();
-  let toSearch = Set(taskIds);
-
-  while (!toSearch.isEmpty()) {
-    const dependencyIds = (
-      await prisma.taskDependency.findMany({
-        cacheStrategy: { swr: 60, ttl: 60 },
-        where: {
-          dependentId: {
-            in: [...toSearch],
-          },
+export async function calculateDependencyTimeEstimate(taskId: number) {
+  const { tasks } = await getParentsAndSelf(taskId);
+  let currTaskId = taskId;
+  let time = 0;
+  const depencenciesReco: Record<number, number[]> = {};
+  while (currTaskId >= 0) {
+    const task = tasks[currTaskId];
+    const dependencyIds = await getDependencyClosure([task.id]);
+    const dependencies = await prisma.task.findMany({
+      where: {
+        id: {
+          in: dependencyIds,
         },
-      })
-    ).map((t) => t.dependentId);
-    toSearch = Set(dependencyIds).subtract(taskIdsSet);
-    taskIdsSet = taskIdsSet.union(dependencyIds);
-  }
-  return [...taskIdsSet];
-}
-
-export async function addDependency(taskId: number, depencencyIds: number[]) {
-  const depencenciesClosure = await getDependencyClosure(depencencyIds);
-  if ([...depencenciesClosure, ...depencencyIds].includes(taskId)) {
-    throw new Error("Cannot set dependency: introducing circular dependency.");
-  }
-  const tasks = await prisma.task.findMany({
-    cacheStrategy: { swr: 60, ttl: 60 },
-    where: {
-      id: {
-        in: [taskId, ...depencencyIds],
       },
-    },
-  });
-
-  const task = tasks.find((t) => t.id === taskId);
-  const depencencies = tasks.filter((t) => depencencyIds.includes(t.id));
-  if (!task) {
-    throw new Error(`Can not find task ${taskId}`);
-  }
-  if (depencencies.length !== depencencyIds.length) {
-    throw new Error("can not find all depencencies.");
-  }
-  if (
-    (task.parentId &&
-      depencencies
-        .map((t) => t.parentId === task.parentId)
-        .reduce((prev, curr) => prev && curr)) ||
-    depencencies.map((t) => !t.parentId).reduce((prev, curr) => prev && curr)
-  ) {
-    //TODO if postgresql can use duplicate parameter
-    const alreadyHas = (
-      await prisma.taskDependency.findMany({
-        where: {
-          dependentId: taskId,
-        },
-      })
-    ).map((r) => r.taskId);
-    const newDepencencyIds = Set(depencencyIds).subtract(alreadyHas).toArray();
-    await prisma.taskDependency.createMany({
-      data: newDepencencyIds.map((id) => {
-        return {
-          taskId: id,
-          dependentId: taskId,
-        };
-      }),
     });
+    depencenciesReco[task.id] = dependencyIds;
+    time = dependencies.reduce(
+      (prev, curr) => prev + (curr.timeEstimate || 0),
+      time
+    );
+    currTaskId = task.parentId || -1;
   }
+  return { time, dependencies: depencenciesReco };
+}
+
+export async function modifyTaskNameOrContent(
+  taskId: number,
+  name?: string,
+  description?: string
+) {
+  if (!name && !description) {
+    throw new Error("must give name or description or both.");
+  }
+
+  const data: {
+    name?: string;
+    description?: string;
+  } = {};
+  if (name) {
+    data.name = name;
+  }
+  if (description) {
+    data.description = description;
+  }
+
+  return await prisma.task.update({
+    where: { id: taskId },
+    data,
+  });
 }
