@@ -1,6 +1,37 @@
 import { ConversationFull, Order } from "@/lib/types";
 import { prisma, getChatMessagesOfDialog } from "@/lib/db";
 import { SubDialog, ChatMessage } from "@prisma/client";
+import { setup, createMachine } from "xstate";
+
+const machine = createMachine({
+  context: {},
+  id: "light",
+  initial: "green",
+  states: {
+    green: {
+      on: {
+        TIMER: {
+          target: "yellow",
+        },
+      },
+    },
+    yellow: {
+      on: {
+        TIMER: {
+          target: "red",
+        },
+      },
+    },
+    red: {
+      on: {
+        TIMER: {
+          target: "green",
+        },
+      },
+    },
+  },
+});
+
 
 export class BaseSystemAgent {
   conversation: ConversationFull;
@@ -47,6 +78,6 @@ export class BaseSystemAgent {
     this.chatMessages = await getChatMessagesOfDialog(this.dialog);
   }
   async act() {
-    throw new Error("function not implemented")
+    throw new Error("function not implemented");
   }
 }

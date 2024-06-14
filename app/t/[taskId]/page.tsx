@@ -3,7 +3,7 @@ import { useParams } from "next/navigation";
 
 import ChatBox from "@/app/_components/ChatBox";
 import { useTaskRecord } from "@/app/_components/TaskRecordContext";
-import { getTask } from "../taskAction";
+import { getFullTask } from "../taskAction";
 import { TaskRecord } from "@/lib/types";
 import { useEffect } from "react";
 
@@ -32,7 +32,11 @@ export default function Home({}) {
     const taskId_ = Number(taskId);
     if (taskId_) {
       const loadTask = async () => {
-        const task = await getTask(taskId_, 3);
+        const task = await getFullTask(taskId_, 3);
+        const currTask = task.tasks[task.current]
+        if (!currTask.conversationId) {
+          
+        }
         setTaskRecord((tasks) => {
           if (!tasks) {
             return task.tasks;
@@ -56,7 +60,7 @@ export default function Home({}) {
               taskId_,
             ])
         );
-      };
+      };  
       loadTask();
     }
   }, [taskId, setCurrentTaskId, setExpandRecord, setRootTaskId, setTaskRecord]);

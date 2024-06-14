@@ -75,36 +75,42 @@ function truncateChatsToMaxLength(
   return res.reverse();
 }
 
-function getMessages(text: string, limit: number, dialog: Dialog) {
+function getMessages(
+  text: string,
+  limit: number,
+  questionAnswer: QuestionAnswer[],
+  system: string,
+  template: string | null
+) {
   let messages = [];
-  if (dialog.system.length > 0) {
+  if (system && system.length > 0) {
     messages.push({
       role: "system",
-      content: dialog.system,
+      content: system,
     });
   }
-  if (dialog.mode.includes("use history")) {
-    const chatsMessage = truncateChatsToMaxLength(
-      dialog.questionAnswer,
-      limit - text.length - dialog.system.length
-    )
-      .map(({ question, answer }) => [
-        { role: "user", content: question },
-        { role: "assistant", content: answer },
-      ])
-      .flat();
+  const chatsMessage = truncateChatsToMaxLength(
+    questionAnswer,
+    limit - text.length - system.length
+  )
+    .map(({ question, answer }) => [
+      { role: "user", content: question },
+      { role: "assistant", content: answer },
+    ])
+    .flat();
 
-    messages = [...messages, ...chatsMessage];
-  }
+  messages = [...messages, ...chatsMessage];
   messages.push({
     role: "user",
-    content: text,
+    content: template ? sprintf(template, text) : text,
   });
   return messages;
 }
 
+export const BASIC_BOT_NAME = "llama3-8b-8192-basic";
+
 const bots: Record<string, Bot> = {
-  "llama3-8b-8192-basic": {
+  [BASIC_BOT_NAME]: {
     call: async (messages) => {
       const chatCompletion = await groq.chat.completions.create({
         messages,
@@ -144,7 +150,7 @@ export async function simpleTalk(
         system,
       },
     });
-    return answer
+    return answer;
   } else {
     throw new Error("No such bot");
   }
@@ -155,15 +161,31 @@ export async function dialogTalk(text: string, dialogId: number) {
   if (!dialog) {
     throw new Error("Error: Invalid dialog Id");
   }
-  if (dialog.template) {
-    text = sprintf(dialog.template, text);
+  return await dialogTalkInner(text, dialog);
+}
+
+export async function dialogTalkInner(
+  text: string,
+  dialog: {
+    questionAnswer: QuestionAnswer[];
+    id?: number;
+    system: string | null | undefined;
+    template: string | null | undefined;
+    bot: string;
   }
+) {
   const bot = bots[dialog.bot];
   let limit = bot.smartLimitation;
 
   for (let i = 0; i < bot.MAX_TRY_NUM; i++) {
     let messages;
-    messages = getMessages(text, limit, dialog);
+    messages = getMessages(
+      text,
+      limit,
+      dialog.questionAnswer,
+      dialog.system || "",
+      dialog.template || null
+    );
 
     try {
       const answer = await bot.call(messages);
@@ -171,7 +193,9 @@ export async function dialogTalk(text: string, dialogId: number) {
         bot.smartLimitation = bot.smartLimitation * 1.01;
       }
       if (answer) {
-        await saveQuestionAndAnswer(dialogId, text, answer);
+        if (dialog.id) {
+          await saveQuestionAndAnswer(dialog.id, text, answer);
+        }
         return answer;
       } else {
         throw new Error("No answer");
@@ -185,7 +209,7 @@ export async function dialogTalk(text: string, dialogId: number) {
           errDetails.error.code === "context_length_exceeded"
         ) {
           if (messages.length <= 2) {
-            throw new Error;
+            throw new Error();
           }
           console.error(
             "Enconter context_length_exceeded, adjust truncate setting and retry."
@@ -199,7 +223,7 @@ export async function dialogTalk(text: string, dialogId: number) {
           continue;
         }
       }
-      throw new Error;
+      throw new Error();
     }
   }
   throw new Error("Error: Maximum retry attempts exceeded for calling llm.");

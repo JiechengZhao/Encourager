@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { talk } from "./talkToAllDialog";
+import { talk } from "./talk";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);

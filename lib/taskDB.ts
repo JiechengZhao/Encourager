@@ -4,7 +4,10 @@ import { listToReco } from "./tools";
 import { getAllTasksFromSubtaskRecords } from "./tools";
 import { prisma } from "./db";
 import { Set } from "immutable";
+import { getMainDialogTemplate } from "./dialogTemplates";
 
+/** Retrieves a task and all its parent tasks recursively
+ */
 export async function getParentsAndSelf(
   taskId: number,
   visited: Set<number> = Set()
@@ -45,6 +48,9 @@ export async function getParentsAndSelf(
   throw new Error("can not find the task");
 }
 
+/**
+ * Retrieves all subtasks of a task recursively
+ */
 export async function getSubtasks(
   taskId: number,
   generation?: number
@@ -68,7 +74,9 @@ export async function getSubtasks(
   }, {});
   return { ...more, [taskId]: subtasks };
 }
-
+/**
+ * Retrieves a single task by its ID
+ */
 export async function getTask(taskId: number) {
   return await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -76,16 +84,20 @@ export async function getTask(taskId: number) {
   });
 }
 
+/**
+ * Retrieves a task and its subtasks and parent tasks recursively
+ * @param layer how many layers of subtasks to retrieve. Do now pass will get all subtasks and subtasks of subtasks.
+ */
 export async function getFullTask(
   taskId: number,
-  generation?: number
+  layer?: number
 ): Promise<TasksPack> {
   const task = await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
     where: { id: taskId },
   });
   if (task) {
-    const subtasks = await getSubtasks(task.id, generation);
+    const subtasks = await getSubtasks(task.id, layer);
     const tasks: TaskRecord = getAllTasksFromSubtaskRecords(subtasks, {
       [task.id]: task,
     });
@@ -111,24 +123,43 @@ export async function getFullTask(
     throw new Error(`can not find the task id: ${taskId}`);
   }
 }
-
+/**
+ * Creates a new task
+ */
 export async function newTask(
   name: string,
   subDialogId: number,
   description?: string,
   parentId?: number
 ) {
-  const task = await prisma.task.create({
-    data: {
-      name,
-      description,
-      subDialogId,
-      parentId,
-    },
-  });
-  return task;
-}
+  return await prisma.$transaction(async (prisma) => {
+    // Create the conversation
+    const conversation = await prisma.conversation.create({
+      data: {
+        title: name,
+        dialogs: {
+          create: [getMainDialogTemplate()],
+        },
+      },
+    });
 
+    // Create the task
+    const task = await prisma.task.create({
+      data: {
+        name,
+        description,
+        subDialogId,
+        parentId,
+        conversationId: conversation.id,
+      },
+    });
+
+    return task;
+  });
+}
+/**
+ * Moves a task to the level of its parent
+ */
 export async function liftTask(taskId: number) {
   const task = await prisma.task.findUniqueOrThrow({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -160,6 +191,9 @@ export async function liftTask(taskId: number) {
   }
 }
 
+/**
+ * Moves a task under one of its sister
+ */
 export async function lowerTask(taskId: number, newParentId: number) {
   const tasks = await prisma.task.findMany({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -198,6 +232,7 @@ export async function lowerTask(taskId: number, newParentId: number) {
   ]);
 }
 
+//Defines valid status transitions for tasks
 const TaskStatusShift: Record<string, string[]> = {
   "Not Started": ["In Progress", "Canceled", "On Hold"],
   "In Progress": ["Done", "On Hold", "Canceled"],
@@ -207,6 +242,9 @@ const TaskStatusShift: Record<string, string[]> = {
   Deferred: ["In Progress", "Canceled", "On Hold"], // Restart or cancel deferred tasks
 };
 
+/**
+ * Changes the status of a task if the transition is valid
+ */
 export async function shiftTaskStatus(taskId: number, newStatus: string) {
   const task = await prisma.task.findUnique({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -238,7 +276,9 @@ export async function shiftTaskStatus(taskId: number, newStatus: string) {
     }
   }
 }
-
+/**
+ * Retrieves tasks that the given tasks depend on
+ */
 export async function getDependencyClosure(taskIds: number[]) {
   let taskIdsSet = Set<number>();
   let toSearch = Set(taskIds);
@@ -259,7 +299,9 @@ export async function getDependencyClosure(taskIds: number[]) {
   }
   return [...taskIdsSet];
 }
-
+/**
+ * Retrieves all tasks that depend on the given tasks
+ */
 export async function getDependent(taskIds: number[]) {
   const dependentIds = await prisma.taskDependency.findMany({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -272,6 +314,9 @@ export async function getDependent(taskIds: number[]) {
   return dependentIds.map((t) => t.dependentId);
 }
 
+/**
+ * Adds dependencies to a task
+ */
 export async function addDependency(taskId: number, depencencyIds: number[]) {
   const tasks = await prisma.task.findMany({
     cacheStrategy: { swr: 60, ttl: 60 },
@@ -325,7 +370,9 @@ export async function addDependency(taskId: number, depencencyIds: number[]) {
     throw new Error("Cannot set dependency: do not share same parent.");
   }
 }
-
+/**
+ * remove dependencies of a task
+ */
 export async function removeDependency(
   taskId?: number,
   depencencyIds?: number[]
@@ -351,7 +398,8 @@ export async function removeDependency(
     where,
   });
 }
-
+/** Sets the time estimate for a task and updates parent tasks if necessary
+ */
 export async function setTimeEstimate(
   taskId: number,
   timeEstimate: number,
@@ -460,7 +508,8 @@ export async function setTimeEstimate(
     return t.status !== "Done" && t.status !== "Canceled";
   }
 }
-
+/** Calculates the total time estimate for all dependencies of a task
+ */
 export async function calculateDependencyTimeEstimate(taskId: number) {
   const { tasks } = await getParentsAndSelf(taskId);
   let currTaskId = taskId;
@@ -485,29 +534,29 @@ export async function calculateDependencyTimeEstimate(taskId: number) {
   }
   return { time, dependencies: depencenciesReco };
 }
-
-export async function modifyTaskNameOrContent(
+/** Modifies the details of a task */
+export async function modifyTask(
   taskId: number,
-  name?: string,
-  description?: string
-) {
-  if (!name && !description) {
-    throw new Error("must give name or description or both.");
-  }
-
-  const data: {
+  data: {
     name?: string;
     description?: string;
-  } = {};
-  if (name) {
-    data.name = name;
+    priority?: number;
+    conversationId?: number;
   }
-  if (description) {
-    data.description = description;
+) {
+  if (!data.name && !data.description) {
+    throw new Error("must give name or description or both.");
   }
 
   return await prisma.task.update({
     where: { id: taskId },
     data,
+  });
+}
+
+export async function getAllTopTasks() {
+  return await prisma.task.findMany({
+    where: { parent: null },
+    cacheStrategy: { swr: 60, ttl: 60 },
   });
 }

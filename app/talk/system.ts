@@ -11,7 +11,7 @@ function normalizeString(str: string) {
   return str.replace(/^"|"$/g, "");
 }
 
-async function newDialog(
+export async function newDialog(
   conversation: ConversationFull,
   task: string,
   chat: ChatMessage,
@@ -103,6 +103,26 @@ export async function system(
     }
   }
 
+  const agentClass = nameToAgentClass[dialog.task];
+  if (agentClass) {
+    return await systemAction(
+      agentClass,
+      conversation,
+      dialog,
+      messageCallback,
+      orderCallback
+    );
+  }
+}
+
+export async function agentNew(
+  agentName: string,
+  conversation: ConversationFull,
+  chat: ChatMessage,
+  messageCallback: (message: ChatMessage) => void,
+  orderCallback: (order: Order) => void
+) {
+  const dialog = await newDialog(conversation, agentName, chat, orderCallback);
   const agentClass = nameToAgentClass[dialog.task];
   if (agentClass) {
     return await systemAction(

@@ -2,8 +2,9 @@ import { dialogTalk } from "../../lib/llm";
 import { system } from "./system";
 import { ChatMessage } from "@prisma/client";
 import { ConversationFull, Order } from "@/lib/types";
-import { prisma } from "@/lib/db";
+import { getSettings, prisma } from "@/lib/db";
 import { getFullConversation } from "../c/_actions/conversation";
+import wordRevise from "./wordRevise";
 
 function talkToAllDialog(
   conversation: ConversationFull,
@@ -49,6 +50,10 @@ export async function talk(
     });
     messageCallback(chat);
 
+    const settings = await getSettings();
+    if (settings.useWordRevisor) {
+      wordRevise(chat, orderCallback);
+    }
     if (subDialogId || text.startsWith("/")) {
       await system(
         conversation,
@@ -57,10 +62,10 @@ export async function talk(
         messageCallback,
         orderCallback
       );
-    } else {
-      await Promise.allSettled([
-        ...talkToAllDialog(conversation, text, messageCallback),
-      ]);
+      return;
     }
+    await Promise.allSettled([
+      ...talkToAllDialog(conversation, text, messageCallback),
+    ]);
   }
 }

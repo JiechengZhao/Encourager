@@ -10,6 +10,7 @@ import {
   getDependent,
   setTimeEstimate,
   calculateDependencyTimeEstimate,
+  getAllTopTasks,
 } from "@/lib/taskDB";
 import { Task } from "@prisma/client";
 import _ from "lodash";
@@ -56,6 +57,12 @@ describe("tasks", () => {
     for (const i of Object.keys(task.tasks)) {
       expect(task.tasks[taskId]).toMatchObject({ id: taskId });
     }
+  });
+
+  test("get all top", async () => {
+    const topTasks = (await getAllTopTasks()).map((t) => t.id);
+    expect(topTasks).toContain(tasks[0].id);
+    expect(topTasks.length).toBeGreaterThan(1);
   });
 
   const depencencyBeforeAll = async () => {

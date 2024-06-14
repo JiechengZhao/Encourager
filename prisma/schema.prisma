@@ -14,9 +14,10 @@ datasource db {
 }
 
 model Settings {
-  id           Int      @id @default(autoincrement())
-  systemListen Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  systemListen   Boolean  @default(true)
+  useWordRevisor Boolean  @default(false)
+  createdAt      DateTime @default(now())
 }
 
 model Conversation {
@@ -56,7 +57,7 @@ model ChatMessage {
 
 model LLMDialog {
   id             Int              @id @default(autoincrement())
-  system         String
+  system         String?
   template       String?
   name           String           @default("AI")
   bot            String

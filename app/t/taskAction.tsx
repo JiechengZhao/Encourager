@@ -1,4 +1,4 @@
 "use server";
-import { getSubtasks, getParents, getTask } from "@/lib/getParents";
+import { getSubtasks, getParentsAndSelf, getFullTask } from "@/lib/taskDB";
 
-export { getSubtasks, getParents, getTask };
+export { getSubtasks, getParentsAndSelf, getFullTask };
